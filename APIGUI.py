@@ -44,7 +44,6 @@ class App:
                 self.tree.selection_set(children[index-1])  # Subtract 1 to convert to 0-based index
                 self.tree.focus_set()
                 self.tree.focus(children[index-1])
-                self.select_row()
 
     def add_row(self, environment="Environment", hostname="Hostname"):
         # Add row number prefix to environment (starting from 1)
@@ -126,11 +125,12 @@ class App:
         self.config_frame = ttk.Frame(main_frame)
         self.config_frame.pack(fill=tk.BOTH, expand=True, pady=20)
 
-        # Add the Next button
-        self.next_button = tk.Button(main_frame, text="Next", command=self.process_action)
-        self.next_button.pack(pady=20)
+        # Add the Download button (changed from Next)
+        self.download_button = tk.Button(main_frame, text="Download", command=self.process_action)
+        self.download_button.pack(pady=20)
 
-        self.root.bind('<Return>', self.enter_key)
+        # Bind Enter key to process_action
+        self.root.bind('<Return>', lambda e: self.process_action())
 
     def on_action_selected(self, event):
         # Clear existing widgets in config_frame
@@ -210,14 +210,12 @@ class App:
             r = m.getzip('/saved-configurations/' + self.selected_config_name, 'zip')
             if r.status_code == 200:
                 # Save the ZIP file content
-                zip_file_path = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\BMC API\saved_configurations.zip"
+                zip_file_path = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configurations.zip"
                 with open(zip_file_path, 'wb') as f:
                     f.write(r.content)
                 print(f'Successfully downloaded the ZIP file to {zip_file_path}')
             else:
                 print(f'Failed to retrieve configurations. Status code: {r.status_code}')
-
-print('==================================================')
 
 if __name__ == "__main__":
     m = mvcm.Mvcm()
