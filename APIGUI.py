@@ -8,7 +8,11 @@ class App:
         self.root = root
         self.root.title("Server Selector")
         self.selected_hostname = None
+        self.username = None
+        self.password = None
         self.is_login_screen = False
+        self.saved_configs = None
+        self.selected_config_name = None
 
         # Create the table
         self.tree = ttk.Treeview(root, columns=("Environment", "Hostname"), show='headings')
@@ -27,8 +31,6 @@ class App:
         # Bind number keys and Enter key
         self.root.bind('<Return>', self.enter_key)
         self.root.bind('<KeyPress>', self.handle_keypress)
-
-        self.saved_configs = None  # Add this to store configurations
 
     def handle_keypress(self, event):
         if self.is_login_screen:
@@ -90,11 +92,11 @@ class App:
         self.root.bind('<Return>', self.enter_key)
 
     def login(self):
-        username = self.username_entry.get()
-        password = self.password_entry.get()
-        m.connect(self.selected_hostname, username, password)
+        self.username = self.username_entry.get()
+        self.password = self.password_entry.get()
+        m.connect(self.selected_hostname, self.username, self.password)
         r = m.get("/saved-configurations", "application/json")
-        self.saved_configs = r.json()  # Store the configurations
+        self.saved_configs = r.json()
         self.show_action_screen()
 
     def show_action_screen(self):
@@ -114,7 +116,7 @@ class App:
         # Create the dropdown
         self.action_var = tk.StringVar()
         self.action_dropdown = ttk.Combobox(main_frame, textvariable=self.action_var, state='readonly')
-        self.action_dropdown['values'] = ('', 'Download')  # Empty string as first option
+        self.action_dropdown['values'] = ('', 'Download')
         self.action_dropdown.pack(pady=10)
 
         # Bind dropdown selection change
@@ -130,7 +132,6 @@ class App:
 
         self.root.bind('<Return>', self.enter_key)
 
-        
     def on_action_selected(self, event):
         # Clear existing widgets in config_frame
         for widget in self.config_frame.winfo_children():
@@ -139,16 +140,18 @@ class App:
         if self.action_var.get() == 'Download':
             # Create configurations table
             self.config_tree = ttk.Treeview(self.config_frame, 
-                                      columns=("Name", "Description", "Date", "User"),
+                                      columns=("Number", "Name", "Description", "Date", "User"),
                                       show='headings')
         
             # Define column headings
+            self.config_tree.heading("Number", text="#")
             self.config_tree.heading("Name", text="Name")
             self.config_tree.heading("Description", text="Description")
             self.config_tree.heading("Date", text="Date")
             self.config_tree.heading("User", text="User")
 
             # Set column widths
+            self.config_tree.column("Number", width=50)
             self.config_tree.column("Name", width=200)
             self.config_tree.column("Description", width=400)
             self.config_tree.column("Date", width=100)
@@ -163,23 +166,58 @@ class App:
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
             # Populate table with configurations
-            if self.saved_configs:  # The JSON is now a direct list of configurations
-                for config in self.saved_configs:
+            if self.saved_configs:
+                for idx, config in enumerate(self.saved_configs, 1):
                     self.config_tree.insert("", tk.END, values=(
+                        str(idx),
                         config['name'],
                         config['description'],
                         config['date'],
                         config['user']
                     ))
 
+            # Bind number keys for config selection
+            def handle_config_number_key(event):
+                if event.char.isdigit():
+                    index = int(event.char)
+                    if 1 <= index <= len(self.saved_configs):
+                        children = self.config_tree.get_children()
+                        # Clear previous selection
+                        self.config_tree.selection_remove(self.config_tree.selection())
+                        # Select the row
+                        self.config_tree.selection_set(children[index-1])
+                        self.config_tree.focus(children[index-1])
+                        # Store the selected config name
+                        selected_item = self.config_tree.item(children[index-1])
+                        self.selected_config_name = selected_item['values'][1]  # Name is in the second column
+
+            # Bind selection event
+            def on_select(event):
+                selected_items = self.config_tree.selection()
+                if selected_items:
+                    item = self.config_tree.item(selected_items[0])
+                    self.selected_config_name = item['values'][1]  # Name is in the second column
+
+            # Bind the events
+            self.root.bind('<KeyPress>', handle_config_number_key)
+            self.config_tree.bind('<<TreeviewSelect>>', on_select)
+
     def process_action(self):
         selected_action = self.action_var.get()
-        if selected_action == 'Download':
-            selected_items = self.config_tree.selection()
-            if selected_items:
-                selected_config = self.config_tree.item(selected_items[0])['values']
-                # Here you can add your download logic using the selected configuration
-                pass
+        if selected_action == 'Download' and self.selected_config_name:
+            print(f"Selected configuration: {self.selected_config_name}")
+            # Add your download logic here using self.selected_config_name
+            r = m.getzip('/saved-configurations/' + self.selected_config_name, 'zip')
+            if r.status_code == 200:
+                # Save the ZIP file content
+                zip_file_path = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\BMC API\saved_configurations.zip"
+                with open(zip_file_path, 'wb') as f:
+                    f.write(r.content)
+                print(f'Successfully downloaded the ZIP file to {zip_file_path}')
+            else:
+                print(f'Failed to retrieve configurations. Status code: {r.status_code}')
+
+print('==================================================')
 
 if __name__ == "__main__":
     m = mvcm.Mvcm()
