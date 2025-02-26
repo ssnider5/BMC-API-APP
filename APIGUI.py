@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 import mvcm
 import json
+import os
 
 class App:
     def __init__(self, root):
@@ -132,16 +134,61 @@ class App:
         # Bind Enter key to process_action
         self.root.bind('<Return>', lambda e: self.process_action())
 
-    def on_action_selected(self, event):
-        # Clear existing widgets in config_frame
-        for widget in self.config_frame.winfo_children():
+
+
+    def show_action_screen(self):
+        # Clear the current window
+        for widget in self.root.winfo_children():
             widget.destroy()
 
-        if self.action_var.get() == 'Download':
+        self.root.title("Action Selection")
+
+        # Create main frame
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Add the question label
+        ttk.Label(main_frame, text="What would you like to do today?").pack(pady=20)
+
+        # Create the dropdown
+        self.action_var = tk.StringVar()
+        self.action_dropdown = ttk.Combobox(main_frame, textvariable=self.action_var, state='readonly')
+        self.action_dropdown['values'] = ('', 'Download', 'Upload')  # Added Upload option
+        self.action_dropdown.pack(pady=10)
+
+        # Bind dropdown selection change
+        self.action_dropdown.bind('<<ComboboxSelected>>', self.on_action_selected)
+
+        # Create frame for configurations table (initially empty)
+        self.config_frame = ttk.Frame(main_frame)
+        self.config_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+
+        # Create frame for the action button
+        self.button_frame = ttk.Frame(main_frame)
+        self.button_frame.pack(pady=20)
+
+    def on_action_selected(self, event):
+        # Clear existing widgets in config_frame and button_frame
+        for widget in self.config_frame.winfo_children():
+            widget.destroy()
+        for widget in self.button_frame.winfo_children():
+            widget.destroy()
+
+        selected_action = self.action_var.get()
+
+        if selected_action == 'Download':
+            # Create a container frame for both table and download location
+            container_frame = ttk.Frame(self.config_frame)
+            container_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Create table frame
+            table_frame = ttk.Frame(container_frame)
+            table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
             # Create configurations table
-            self.config_tree = ttk.Treeview(self.config_frame, 
-                                      columns=("Number", "Name", "Description", "Date", "User"),
-                                      show='headings')
+            self.config_tree = ttk.Treeview(table_frame, 
+                                    columns=("Number", "Name", "Description", "Date", "User"),
+                                    show='headings')
         
             # Define column headings
             self.config_tree.heading("Number", text="#")
@@ -158,12 +205,30 @@ class App:
             self.config_tree.column("User", width=100)
 
             # Add scrollbar
-            scrollbar = ttk.Scrollbar(self.config_frame, orient=tk.VERTICAL, command=self.config_tree.yview)
+            scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.config_tree.yview)
             self.config_tree.configure(yscrollcommand=scrollbar.set)
 
             # Pack the table and scrollbar
             self.config_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            # Create download location frame
+            download_frame = ttk.Frame(container_frame)
+            download_frame.pack(fill=tk.X, pady=(10, 0))
+
+            # Add download location label and entry
+            ttk.Label(download_frame, text="Download Location:").pack(side=tk.LEFT, padx=(0, 10))
+            self.download_location = tk.StringVar()
+            self.download_location.set(fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip")
+            self.download_entry = ttk.Entry(download_frame, textvariable=self.download_location, width=80)
+            self.download_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            # Add the Download button in the button_frame
+            self.download_button = tk.Button(self.button_frame, text="Download", command=self.process_action)
+            self.download_button.pack()
+
+            # Bind Enter key to process_action
+            self.root.bind('<Return>', lambda e: self.process_action())
 
             # Populate table with configurations
             if self.saved_configs:
@@ -175,6 +240,7 @@ class App:
                         config['date'],
                         config['user']
                     ))
+
 
             # Bind number keys for config selection
             def handle_config_number_key(event):
@@ -202,6 +268,51 @@ class App:
             self.root.bind('<KeyPress>', handle_config_number_key)
             self.config_tree.bind('<<TreeviewSelect>>', on_select)
 
+        elif selected_action == 'Upload':
+            # Create upload frame
+            upload_frame = ttk.Frame(self.config_frame)
+            upload_frame.pack(fill=tk.BOTH, expand=True)
+
+            # Create file selection frame
+            file_frame = ttk.Frame(upload_frame)
+            file_frame.pack(fill=tk.X, pady=20)
+
+            # Add file path label and entry
+            ttk.Label(file_frame, text="Selected File:").pack(side=tk.LEFT, padx=(0, 10))
+            self.file_path = tk.StringVar()
+            self.file_entry = ttk.Entry(file_frame, textvariable=self.file_path, width=60)
+            self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+
+            # Add browse button
+            def browse_file():
+                filename = filedialog.askopenfilename(
+                    title="Select a ZIP file",
+                    filetypes=[("ZIP files", "*.zip")]
+                )
+                if filename:
+                    self.file_path.set(filename)
+
+            browse_button = ttk.Button(file_frame, text="Browse", command=browse_file)
+            browse_button.pack(side=tk.LEFT)
+
+            # Add the Upload button in the button_frame
+            self.upload_button = tk.Button(
+                self.button_frame,
+                text="Upload",
+                command=self.process_action,
+                state=tk.DISABLED  # Initially disabled until file is selected
+            )
+            self.upload_button.pack()
+
+            # Enable/disable upload button based on file selection
+            def on_file_path_change(*args):
+                if self.file_path.get():
+                    self.upload_button.config(state=tk.NORMAL)
+                else:
+                    self.upload_button.config(state=tk.DISABLED)
+
+            self.file_path.trace('w', on_file_path_change)
+
     def process_action(self):
         selected_action = self.action_var.get()
         if selected_action == 'Download' and self.selected_config_name:
@@ -209,13 +320,38 @@ class App:
             # Add your download logic here using self.selected_config_name
             r = m.getzip('/saved-configurations/' + self.selected_config_name, 'zip')
             if r.status_code == 200:
-                # Save the ZIP file content
-                zip_file_path = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configurations.zip"
+                # Save the ZIP file content using the custom download location
+                zip_file_path = self.download_location.get()
                 with open(zip_file_path, 'wb') as f:
                     f.write(r.content)
                 print(f'Successfully downloaded the ZIP file to {zip_file_path}')
             else:
                 print(f'Failed to retrieve configurations. Status code: {r.status_code}')
+
+        elif selected_action == 'Upload':
+            selected_file = self.file_path.get()
+            if selected_file:
+                print(f"Selected file for upload: {selected_file}")
+                try:
+                    # Get just the filename without path 
+                    filename = os.path.basename(selected_file)
+
+                    # Create file parameter
+                    files = {'file': (filename, open(selected_file, 'rb'))}
+                    
+                    print("Uploading file...")
+                    
+                    # Send the file
+                    response = m.postbinary('/saved-configurations', selected_file)
+                    
+                    if response.ok:
+                        print("Upload successful!")
+                    else:
+                        print(f"Upload failed with status code: {response.status_code}")
+                        print(f"Error message: {response.text}")
+                        
+                except Exception as e:
+                    print(f"Error during upload: {str(e)}")
 
 if __name__ == "__main__":
     m = mvcm.Mvcm()

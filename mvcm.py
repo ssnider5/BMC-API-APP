@@ -7,6 +7,7 @@ import json
 import sys
 import zipfile
 import io
+import os
 from http import HTTPStatus
 from http.cookiejar import CookieJar
 
@@ -17,7 +18,7 @@ from urllib3.exceptions import InsecureRequestWarning
 # server. 
 #
 class Mvcm:
-    _traceon = False
+    _traceon = True
 
 
     #
@@ -26,7 +27,7 @@ class Mvcm:
     def connect(self, host, user, password):
 
         self.traceon = Mvcm._traceon
-        self.traceon = False
+        self.traceon = True
         print(f'mvcm connect traceon = {self.traceon}')
 
         requests.packages.urllib3.disable_warnings()
@@ -81,6 +82,7 @@ class Mvcm:
     # Performs an HTTP GET
     #
     def get(self, path, contentType = 'application/json'):
+
         self.trace('=======================================================================')
         headers = {}
         if self.apiSession != None:
@@ -191,35 +193,59 @@ class Mvcm:
         return r
 
 
-    def postbinary(self, path, content):
+    def postbinary(self, path, file_path):
         headers = {}
         if self.apiSession is not None:
             headers['x-api-session'] = self.apiSession 
 
         if 'XSRF-TOKEN' in self.cookies:
             headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
-    
-        headers['Content-Type'] = 'application/octetstream'
-    
+
         self.trace(f'POST /mvcm-api{path}')
         self.trace('Headers')
         self.traceheaders(headers)
         self.trace('Cookies')
         self.traceheaders(self.cookies)
         self.trace('')
-        self.trace('Content: (binary data)')
-    
-        r = requests.post(url=self.mkurl(path), headers=headers, data=content, verify=False, cookies=self.cookies)
 
-        self.cookies.update(r.cookies)
-        self.trace('Response:')
-        self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
-        self.traceheaders(r.headers)
-        self.trace('')
-        self.trace(f'    status: {r.status_code} from {self.mkurl(path)}')
-        if not r.ok:
-            print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
-        return r
+        try:
+            # Check if file exists and is not empty
+            if os.path.getsize(file_path) == 0:
+                raise ValueError("File is empty. No data to upload.")
+
+            self.trace(f'File size: {os.path.getsize(file_path)} bytes')
+
+            # Create the multipart encoder
+            filename = os.path.basename(file_path)
+            with open(file_path, 'rb') as f:
+                files = {'file': (filename, f, 'application/octet-stream')}
+                
+                # Send the request
+                r = requests.post(
+                    self.mkurl(path),
+                    headers=headers,
+                    files=files,
+                    cookies=self.cookies,
+                    verify=False
+                )
+
+            self.cookies.update(r.cookies)
+            self.trace('Response:')
+            self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
+            self.traceheaders(r.headers)
+            
+            if not r.ok:
+                print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
+                print(f'    Request headers sent: {headers}')
+                print(f'    Response headers: {dict(r.headers)}')
+                print(f'    Response content: {r.text}')
+                
+            return r
+
+        except Exception as e:
+            print(f"Exception during POST request: {str(e)}")
+            raise
+
     
     #
     # Performs an HTTP DELETE, which removes the entity
