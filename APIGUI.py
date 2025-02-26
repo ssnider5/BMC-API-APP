@@ -153,7 +153,7 @@ class App:
         # Create the dropdown
         self.action_var = tk.StringVar()
         self.action_dropdown = ttk.Combobox(main_frame, textvariable=self.action_var, state='readonly')
-        self.action_dropdown['values'] = ('', 'Download', 'Upload')  # Added Upload option
+        self.action_dropdown['values'] = ('', 'Download', 'Upload', 'Restore')  # Added Restore option
         self.action_dropdown.pack(pady=10)
 
         # Bind dropdown selection change
@@ -176,7 +176,7 @@ class App:
 
         selected_action = self.action_var.get()
 
-        if selected_action == 'Download':
+        if selected_action in ['Download', 'Restore']:  # Handle both Download and Restore similarly
             # Create a container frame for both table and download location
             container_frame = ttk.Frame(self.config_frame)
             container_frame.pack(fill=tk.BOTH, expand=True)
@@ -212,20 +212,25 @@ class App:
             self.config_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-            # Create download location frame
-            download_frame = ttk.Frame(container_frame)
-            download_frame.pack(fill=tk.X, pady=(10, 0))
+            if selected_action == 'Download':
+                # Create download location frame
+                download_frame = ttk.Frame(container_frame)
+                download_frame.pack(fill=tk.X, pady=(10, 0))
 
-            # Add download location label and entry
-            ttk.Label(download_frame, text="Download Location:").pack(side=tk.LEFT, padx=(0, 10))
-            self.download_location = tk.StringVar()
-            self.download_location.set(fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip")
-            self.download_entry = ttk.Entry(download_frame, textvariable=self.download_location, width=80)
-            self.download_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                # Add download location label and entry
+                ttk.Label(download_frame, text="Download Location:").pack(side=tk.LEFT, padx=(0, 10))
+                self.download_location = tk.StringVar()
+                self.download_location.set(fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip")
+                self.download_entry = ttk.Entry(download_frame, textvariable=self.download_location, width=80)
+                self.download_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-            # Add the Download button in the button_frame
-            self.download_button = tk.Button(self.button_frame, text="Download", command=self.process_action)
-            self.download_button.pack()
+                # Add the Download button in the button_frame
+                self.download_button = tk.Button(self.button_frame, text="Download", command=self.process_action)
+                self.download_button.pack()
+            else:  # Restore action
+                # Add the Restore button in the button_frame
+                self.restore_button = tk.Button(self.button_frame, text="Restore", command=self.process_action)
+                self.restore_button.pack()
 
             # Bind Enter key to process_action
             self.root.bind('<Return>', lambda e: self.process_action())
@@ -240,7 +245,6 @@ class App:
                         config['date'],
                         config['user']
                     ))
-
 
             # Bind number keys for config selection
             def handle_config_number_key(event):
@@ -352,6 +356,20 @@ class App:
                         
                 except Exception as e:
                     print(f"Error during upload: {str(e)}")
+        
+        elif selected_action == 'Restore' and self.selected_config_name:
+            print(f"Restoring configuration: {self.selected_config_name}")
+            # Add your restore logic here using self.selected_config_name
+            # For example:
+            try:
+                response = m.post(f'/saved-configurations/{self.selected_config_name}/operations/restore', None)
+                if response.ok:
+                    print("Restore successful!")
+                else:
+                    print(f"Restore failed with status code: {response.status_code}")
+                    print(f"Error message: {response.text}")
+            except Exception as e:
+                print(f"Error during restore: {str(e)}")
 
 if __name__ == "__main__":
     m = mvcm.Mvcm()
