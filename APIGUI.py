@@ -181,6 +181,40 @@ class App:
             container_frame = ttk.Frame(self.config_frame)
             container_frame.pack(fill=tk.BOTH, expand=True)
 
+            # Create refresh button frame
+            refresh_frame = ttk.Frame(container_frame)
+            refresh_frame.pack(fill=tk.X, pady=(0, 10))
+
+            # Add refresh button
+            def refresh_configs():
+                try:
+                    # Call the API to get updated configurations
+                    r = m.get("/saved-configurations", "application/json")
+                    if r.ok:
+                        self.saved_configs = r.json()
+                        
+                        # Clear existing items in the table
+                        for item in self.config_tree.get_children():
+                            self.config_tree.delete(item)
+                        
+                        # Repopulate with new data
+                        for idx, config in enumerate(self.saved_configs, 1):
+                            self.config_tree.insert("", tk.END, values=(
+                                str(idx),
+                                config['name'],
+                                config['description'],
+                                config['date'],
+                                config['user']
+                            ))
+                        print("Configurations refreshed successfully!")
+                    else:
+                        print(f"Failed to refresh configurations. Status code: {r.status_code}")
+                except Exception as e:
+                    print(f"Error refreshing configurations: {str(e)}")
+
+            refresh_button = ttk.Button(refresh_frame, text="↻ Refresh", command=refresh_configs)
+            refresh_button.pack(side=tk.RIGHT, padx=5)
+
             # Create table frame
             table_frame = ttk.Frame(container_frame)
             table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
