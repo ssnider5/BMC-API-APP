@@ -324,7 +324,7 @@ class UpdatePanel(tk.Frame):
             self.on_update(self.source_hostname, self.target_hostname)
 
 # -------------------------------
-# Action Panel – uses keybindings instead of a dropdown
+# Action Panel – now features a banner with buttons and a servers drop down
 # -------------------------------
 class ActionPanel(tk.Frame):
     def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
@@ -341,61 +341,52 @@ class ActionPanel(tk.Frame):
         self.target_hostname = None
         self.current_action = None  # holds the currently selected action
         self.create_widgets()
-        # Bind Shift+number keys for actions
-        self.master.bind("!", lambda e: self.show_panel("Download"))
-        self.master.bind("@", lambda e: self.show_panel("Upload"))
-        self.master.bind("#", lambda e: self.show_panel("Restore"))
-        self.master.bind("$", lambda e: self.show_panel("Create"))
-        self.master.bind("%", lambda e: self.show_panel("Update"))
+        # (Optional) additional keybindings can be set here if desired
 
     def create_widgets(self):
-        # Server Selection Dropdown (unchanged)
-        server_frame = ttk.Frame(self)
-        server_frame.pack(pady=5)
-        ttk.Label(server_frame, text="Server:").pack(side=tk.LEFT, padx=(0, 5))
-        self.server_var = tk.StringVar()
-        server_display_values = [f"{env} ({hostname})" for env, hostname in self.servers]
-        self.server_dropdown = ttk.Combobox(server_frame, textvariable=self.server_var, state='readonly')
-        self.server_dropdown['values'] = server_display_values
-        self.server_dropdown.pack(side=tk.LEFT)
-        default_server_str = server_display_values[0]
-        self.server_var.set(default_server_str)
-        self.selected_server = self.servers[0]
-        self.server_dropdown.bind('<<ComboboxSelected>>', self.on_server_changed)
-
-        # Instructions for keybindings instead of an action dropdown
-        instructions = ("Keybindings:\n"
-                        "Shift+1: Download\n"
-                        "Shift+2: Upload\n"
-                        "Shift+3: Restore\n"
-                        "Shift+4: Create\n"
-                        "Shift+5: Update")
-        self.instructions_label = ttk.Label(self, text=instructions, font=('TkDefaultFont', 10))
-        self.instructions_label.pack(pady=10)
-
+        # Banner with program name, action buttons, and a servers drop down
+        banner_frame = ttk.Frame(self)
+        banner_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Program name on the far left
+        program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 12, 'bold'))
+        program_label.pack(side=tk.LEFT, padx=(5, 10))
+        # Vertical separator
+        separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
+        separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        # Action buttons (flat, borderless)
+        options = ["Download", "Upload", "Restore", "Create", "Update"]
+        for option in options:
+            btn = tk.Button(banner_frame, text=option, command=lambda opt=option: self.show_panel(opt),
+                            relief="flat", bd=0)
+            btn.pack(side=tk.LEFT, padx=5)
+        # Servers drop down on the far right – shows only the word "Servers" with a down arrow
+        self.servers_mb = tk.Menubutton(banner_frame, text="Servers ▼", relief="flat", bd=0)
+        self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
+        self.servers_mb["menu"] = self.servers_mb.menu
+        for server in self.servers:
+            env, hostname = server
+            label = f"{env} ({hostname})"
+            self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
+        self.servers_mb.pack(side=tk.RIGHT, padx=5)
+        
+        # Below the banner, additional labels and container frames
         ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
-        ttk.Label(self, text="Use the keybindings above to select an action.").pack(pady=10)
+        ttk.Label(self, text="Select an action using the banner above.").pack(pady=10)
         self.panel_container = ttk.Frame(self)
         self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
         self.button_frame = ttk.Frame(self)
         self.button_frame.pack(pady=10)
 
-    def on_server_changed(self, event):
-        selected_str = self.server_var.get()
-        for env, hostname in self.servers:
-            if f"{env} ({hostname})" == selected_str:
-                # Reconnect with the new hostname using current credentials
-                self.controller.connect(hostname, self.username, self.password)
-                self.selected_server = (env, hostname)
-                new_configs = self.controller.get_saved_configurations()
-                self.saved_configs = new_configs
-                print(f"Connected to new server: {selected_str}")
-                # Refresh any displayed panel that has a refresh_configs method
-                for widget in self.panel_container.winfo_children():
-                    if hasattr(widget, 'refresh_configs'):
-                        widget.saved_configs = new_configs
-                        widget.refresh_configs()
-                break
+    def set_server(self, server):
+        self.selected_server = server
+        new_configs = self.controller.get_saved_configurations()
+        self.saved_configs = new_configs
+        print(f"Connected to new server: {server[0]} ({server[1]})")
+        # Refresh any displayed panel that has a refresh_configs method
+        for widget in self.panel_container.winfo_children():
+            if hasattr(widget, 'refresh_configs'):
+                widget.saved_configs = new_configs
+                widget.refresh_configs()
 
     def show_panel(self, action):
         self.current_action = action
@@ -490,7 +481,7 @@ class MainApp(tk.Tk):
         self.username = None
         self.password = None
         self.saved_configs = None
-        self.geometry("800x600")
+        self.geometry("1100x600")
         self.show_login()
 
     def show_login(self):
