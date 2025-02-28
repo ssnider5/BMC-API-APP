@@ -37,29 +37,53 @@ class BusinessController:
 
     def update_configuration(self, source_hostname, target_hostname, username, password):
         user_docs = os.path.join(os.path.expanduser('~'),
-                                 "OneDrive - Fiserv Corp", "Documents", "MergedSaveConfig")
+                                "OneDrive - Fiserv Corp", "Documents", "MergedSaveConfig")
         os.makedirs(user_docs, exist_ok=True)
+        
         source_connection = mvcm.Mvcm()
         target_connection = mvcm.Mvcm()
         source_connection.connect(source_hostname, username, password)
         target_connection.connect(target_hostname, username, password)
+        
+        # Try to delete existing files on server first, ignoring any errors
+        try:
+            source_connection.delete('/saved-configurations/source_Merge')
+        except Exception:
+            pass
+            
+        try:
+            target_connection.delete('/saved-configurations/target_Merge')
+        except Exception:
+            pass
+        
+        #Then create them
+        data = {"name": 'source_Merge', "description": 'Newly created source config to be merged'}
+        response = source_connection.post('/saved-configurations/source_Merge', data)
+        data = {"name": 'target_Merge', "description": 'Newly created target config to be merged'}
+        response = target_connection.post('/saved-configurations/target_Merge', data)
+
+        #Now download them
         source_response = source_connection.getzip('/saved-configurations/source_Merge', 'zip')
         target_response = target_connection.getzip('/saved-configurations/target_Merge', 'zip')
         source_zip = os.path.join(user_docs, "source_Merge.zip")
         target_zip = os.path.join(user_docs, "target_Merge.zip")
+        
         with open(source_zip, 'wb') as f:
             f.write(source_response.content)
         with open(target_zip, 'wb') as f:
             f.write(target_response.content)
+            
         merged_zip_path = source_connection.merge_configurations(username, source_hostname, target_hostname)
         if os.path.exists(merged_zip_path):
             response = target_connection.postbinary('/saved-configurations', merged_zip_path)
             success = response.ok
         else:
             success = False
+            
         try:
             if os.path.exists(merged_zip_path):
                 os.remove(merged_zip_path)
         except Exception:
             pass
+            
         return success
