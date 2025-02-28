@@ -292,7 +292,6 @@ class Mvcm:
         return r
 
     def merge_configurations(self, username, source_hostname, target_hostname):
-
         def clear_directory(directory):
             # Walk the directory tree from the bottom up
             for root, dirs, files in os.walk(directory, topdown=False):
@@ -311,8 +310,9 @@ class Mvcm:
                         os.rmdir(dir_path)
                     except Exception as e:
                         print(f"Could not delete directory {dir_path}: {e}")
+
         try:
-            # Define directories (modify merge_base_dir as needed)
+            # Define directories
             user_docs = os.path.join(os.path.expanduser('~'), "OneDrive - Fiserv Corp", "Documents")
             merge_base_dir = os.path.join(user_docs, "MergedSaveConfig")
             source_extract_dir = os.path.join(merge_base_dir, "sourceExtracted")
@@ -370,36 +370,100 @@ class Mvcm:
                     print(f"- Copying /{directory}")
                     shutil.copytree(target_dir_path, merged_dir_path)
 
-            # Create merged zip file
+            # Create merged zip file with specific naming convention
             from datetime import datetime
             current_date = datetime.now().strftime("%d%b%Y").upper()
             version = "4.1.05"
             source_server = source_hostname.split('.')[0].upper()
             target_server = target_hostname.split('.')[0].upper()
-            merged_zip_name = f"{source_server}_{target_server}_Merged_V{version}_{current_date}.zip"
-            merged_zip_path = os.path.join(user_docs, merged_zip_name)
+            merged_zip_name = f"{source_server}_{target_server}_Merged_V{version}_{current_date}"
+
+            # Update descriptor.xml
+            descriptor_path = os.path.join(merge_file_dir, "descriptor.xml")
+            if os.path.exists(descriptor_path):
+                print("\nUpdating descriptor.xml...")
+                
+                # Read the current content
+                with open(descriptor_path, 'r') as file:
+                    content = file.read()
+                
+                # Parse XML
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(content)
+                
+                # Update the name field
+                name_element = root.find('name')
+                if name_element is not None:
+                    name_element.text = f"{source_server}_{target_server}_Merged_V{version}_{current_date}"
+                    print(f"Updated name in descriptor.xml to: {name_element.text}")
+
+                # Update the name field
+                description_element = root.find('description')
+                if description_element is not None:
+                    description_element.text = f"Config from {source_server} brought to {target_server} on {current_date}"
+                    print(f"Updated name in descriptor.xml to: {description_element.text}")
+
+                    
+                
+                # Write back the modified XML
+                tree = ET.ElementTree(root)
+                tree.write(descriptor_path, encoding='utf-8', xml_declaration=True)
+                
+                # Format the XML file with proper indentation
+                import xml.dom.minidom
+                with open(descriptor_path, 'r') as file:
+                    xml_content = file.read()
+                dom = xml.dom.minidom.parseString(xml_content)
+                pretty_xml = dom.toprettyxml(indent="    ")
+                with open(descriptor_path, 'w') as file:
+                    file.write(pretty_xml)
+            else:
+                print("Warning: descriptor.xml not found in merge directory")
+
+            merged_zip_path = os.path.join(merge_base_dir, merged_zip_name)
+
+            # Clean up any existing zip file
+            if os.path.exists(f"{merged_zip_path}.zip"):
+                os.remove(f"{merged_zip_path}.zip")
 
             print("\nCreating merged zip file...")
-            with zipfile.ZipFile(merged_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                original_dir = os.getcwd()
-                os.chdir(merge_file_dir)
-                for root, dirs, files in os.walk('.'):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arcname = file_path[2:] if file_path.startswith('./') or file_path.startswith('.\\') else file_path
-                        zipf.write(file_path, arcname)
-                os.chdir(original_dir)
+            # Change to the parent directory of mergeFile
+            original_dir = os.getcwd()
+            os.chdir(merge_base_dir)
+            
+            # Create the zip file using shutil.make_archive
+            shutil.make_archive(merged_zip_path, 'zip', 'mergeFile')
+            
+            # Change back to original directory
+            os.chdir(original_dir)
 
-            print(f"\nMerged zip file created:")
-            print(f"- Location: {merged_zip_path}")
-            print(f"- Size: {os.path.getsize(merged_zip_path)} bytes")
+            print(f"\nMerged zip contents:")
+            with zipfile.ZipFile(f"{merged_zip_path}.zip", 'r') as zip_ref:
+                file_list = zip_ref.namelist()
+                print(f"Total files: {len(file_list)}")
+                print("Key directories:")
+                for d in directories_to_replace:
+                    files = [f for f in file_list if f.startswith(f"{d}/")]
+                    print(f"- /{d}/: {len(files)} files")
 
-            return merged_zip_path
+            # Create copy with 'c' prefix
+            copy_zip_name = f"c{merged_zip_name}.zip"
+            copy_zip_path = os.path.join(merge_base_dir, copy_zip_name)
+            
+            print(f"\nCreating copy of zip file...")
+            shutil.copy2(f"{merged_zip_path}.zip", copy_zip_path)
+            print(f"Copy created: {copy_zip_path}")
+
+            print(f"\nMerged zip files created:")
+            print(f"- Original Location: {merged_zip_path}.zip")
+            print(f"- Copy Location: {copy_zip_path}")
+            print(f"- Size: {os.path.getsize(f'{merged_zip_path}.zip')} bytes")
+
+            return f"{merged_zip_path}.zip"
 
         except Exception as e:
             print(f"Error during merge: {str(e)}")
             raise
-
 
     #
     # Exit hook. You can perform more cleanup here.
