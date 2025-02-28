@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-from connectinfo import ConnectInfo
 import atexit
 import requests
 import json
