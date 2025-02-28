@@ -323,8 +323,11 @@ class UpdatePanel(tk.Frame):
         if self.source_hostname and self.target_hostname:
             self.on_update(self.source_hostname, self.target_hostname)
 
-# -------------------------------
-# Action Panel – now features a banner with buttons and a servers drop down
+# # -------------------------------
+# Action Panel – now features a banner with buttons,
+# displays the title and underneath it the current server info
+# (with a drop down to change the server),
+# and refreshes the saved configurations correctly when a new server is selected.
 # -------------------------------
 class ActionPanel(tk.Frame):
     def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
@@ -339,39 +342,72 @@ class ActionPanel(tk.Frame):
         self.create_data = None
         self.source_hostname = None
         self.target_hostname = None
-        self.current_action = None  # holds the currently selected action
+        self.current_action = None
+        self.action_buttons = {}  # To store references to action buttons
+        # Set default selected server to the first one
+        self.selected_server = self.servers[0]
         self.create_widgets()
-        # (Optional) additional keybindings can be set here if desired
 
     def create_widgets(self):
-        # Banner with program name, action buttons, and a servers drop down
+        # ---------------------------
+        # Banner: Program name and action buttons
+        # ---------------------------
         banner_frame = ttk.Frame(self)
-        banner_frame.pack(fill=tk.X, padx=5, pady=5)
-        # Program name on the far left
-        program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 12, 'bold'))
+        banner_frame.pack(fill=tk.X, padx=5, pady=10)  # Increased padding makes banner bigger
+        
+        # Program name on the far left (with a slightly larger font)
+        program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 14, 'bold'))
         program_label.pack(side=tk.LEFT, padx=(5, 10))
-        # Vertical separator
+
+        # Vertical Seperator
         separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
         separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        # Action buttons (flat, borderless)
+        
+        # Action buttons
         options = ["Download", "Upload", "Restore", "Create", "Update"]
         for option in options:
-            btn = tk.Button(banner_frame, text=option, command=lambda opt=option: self.show_panel(opt),
-                            relief="flat", bd=0)
+            btn = tk.Button(banner_frame,
+                            text=option,
+                            command=lambda opt=option: self.show_panel(opt),
+                            relief="flat", bd=0, padx=10, pady=5)
             btn.pack(side=tk.LEFT, padx=5)
-        # Servers drop down on the far right – shows only the word "Servers" with a down arrow
-        self.servers_mb = tk.Menubutton(banner_frame, text="Servers ▼", relief="flat", bd=0)
+            self.action_buttons[option] = btn
+
+        # ---------------------------
+        # Orange line underneath the banner
+        # ---------------------------
+        orange_line = tk.Frame(self, bg="orange", height=2)
+        orange_line.pack(fill=tk.X, padx=0, pady=(0, 10))
+        
+        # ---------------------------
+        # Title and Current Server Label (centered)
+        # ---------------------------
+        title_label = ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold'))
+        title_label.pack(pady=(10, 5))
+        self.current_server_label = ttk.Label(
+            self,
+            text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
+            font=('TkDefaultFont', 10)
+        )
+        self.current_server_label.pack(pady=(0, 10))
+
+        # ---------------------------
+        # Server Drop-Down Button (aligned to the left under the banner)
+        # ---------------------------
+        server_dropdown_frame = ttk.Frame(self)
+        server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
+        self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
         self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
         self.servers_mb["menu"] = self.servers_mb.menu
         for server in self.servers:
             env, hostname = server
             label = f"{env} ({hostname})"
             self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
-        self.servers_mb.pack(side=tk.RIGHT, padx=5)
+        self.servers_mb.pack(side=None)
         
-        # Below the banner, additional labels and container frames
-        ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
-        ttk.Label(self, text="Select an action using the banner above.").pack(pady=10)
+        # ---------------------------
+        # Container for dynamic panels and action button
+        # ---------------------------
         self.panel_container = ttk.Frame(self)
         self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
         self.button_frame = ttk.Frame(self)
@@ -379,10 +415,11 @@ class ActionPanel(tk.Frame):
 
     def set_server(self, server):
         self.selected_server = server
+        self.current_server_label.config(text=f"Current Server: {server[0]} ({server[1]})")
+        self.controller.connect(server[1], self.username, self.password)
         new_configs = self.controller.get_saved_configurations()
         self.saved_configs = new_configs
         print(f"Connected to new server: {server[0]} ({server[1]})")
-        # Refresh any displayed panel that has a refresh_configs method
         for widget in self.panel_container.winfo_children():
             if hasattr(widget, 'refresh_configs'):
                 widget.saved_configs = new_configs
@@ -390,7 +427,14 @@ class ActionPanel(tk.Frame):
 
     def show_panel(self, action):
         self.current_action = action
-        # Clear any existing panel
+        # Update button colors: set the active button to orange, others to default
+        for act, button in self.action_buttons.items():
+            if act == action:
+                button.config(bg="orange", activebackground="orange", fg="white")
+            else:
+                button.config(bg="SystemButtonFace", activebackground="SystemButtonFace", fg="black")
+
+        # Clear any existing panel from the panel container and button frame
         for widget in self.panel_container.winfo_children():
             widget.destroy()
         for widget in self.button_frame.winfo_children():
@@ -400,7 +444,6 @@ class ActionPanel(tk.Frame):
             panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
                                          self.username, self.controller.mvcm, self.on_config_select)
             panel.pack(fill=tk.BOTH, expand=True)
-            # Auto-refresh the saved configurations on panel switch
             panel.refresh_configs()
         elif action == 'Upload':
             panel = UploadPanel(self.panel_container, self.on_file_select)
@@ -464,7 +507,6 @@ class ActionPanel(tk.Frame):
             print("Update process completed successfully!" if success else "Update failed.")
         else:
             print("Required selections are missing for the chosen action.")
-
 # -------------------------------
 # Main Application – Login screen appears immediately
 # -------------------------------
