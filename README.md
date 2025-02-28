@@ -104,7 +104,7 @@ For support, please:
 ## Acknowledgments
 
 - BMC API documentation and team
-- Sean Snider for everything
+- Created by: Sean Snider
 - Kevin Lyles for helping test the UI
 
 ## Version History
