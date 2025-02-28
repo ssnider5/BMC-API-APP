@@ -291,47 +291,60 @@ class Mvcm:
         self.trace(f'{r.status_code} {HTTPStatus(r.status_code).phrase}')
         return r
 
-
-
     def merge_configurations(self, username, source_hostname, target_hostname):
-        """Merge source and target configurations"""
+
+        def clear_directory(directory):
+            # Walk the directory tree from the bottom up
+            for root, dirs, files in os.walk(directory, topdown=False):
+                for name in files:
+                    file_path = os.path.join(root, name)
+                    try:
+                        # Ensure the file is writable
+                        os.chmod(file_path, 0o777)
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"Could not delete file {file_path}: {e}")
+                for name in dirs:
+                    dir_path = os.path.join(root, name)
+                    try:
+                        os.chmod(dir_path, 0o777)
+                        os.rmdir(dir_path)
+                    except Exception as e:
+                        print(f"Could not delete directory {dir_path}: {e}")
         try:
-            # Define all required directories
+            # Define directories (modify merge_base_dir as needed)
             user_docs = os.path.join(os.path.expanduser('~'), "OneDrive - Fiserv Corp", "Documents")
             merge_base_dir = os.path.join(user_docs, "MergedSaveConfig")
             source_extract_dir = os.path.join(merge_base_dir, "sourceExtracted")
             target_extract_dir = os.path.join(merge_base_dir, "targetExtracted")
             merge_file_dir = os.path.join(merge_base_dir, "mergeFile")
-
+            
             # Create directories if they don't exist
             for dir_path in [merge_base_dir, source_extract_dir, target_extract_dir, merge_file_dir]:
                 if not os.path.exists(dir_path):
                     os.makedirs(dir_path)
+                    print(f"Created directory: {dir_path}")
 
-            # Define source and target zip files
+            # Optionally clear the directories without admin rights
+            for dir_path in [source_extract_dir, target_extract_dir, merge_file_dir]:
+                if os.path.exists(dir_path):
+                    clear_directory(dir_path)  # use the helper function defined above
+
+            # Continue with extraction and merging...
             source_zip = os.path.join(merge_base_dir, "source_Merge.zip")
             target_zip = os.path.join(merge_base_dir, "target_Merge.zip")
 
             print(f"\nSource zip size: {os.path.getsize(source_zip)} bytes")
             print(f"Target zip size: {os.path.getsize(target_zip)} bytes")
 
-            # Clean existing extracted directories
-            #for dir_path in [source_extract_dir, target_extract_dir, merge_file_dir]:
-            #    if os.path.exists(dir_path):
-            #        shutil.rmtree(dir_path)
-            #     os.makedirs(dir_path)
-
-            # Extract source zip
             print("\nExtracting source zip...")
             with zipfile.ZipFile(source_zip, 'r') as zip_ref:
                 zip_ref.extractall(source_extract_dir)
 
-            # Extract target zip
             print("\nExtracting target zip...")
             with zipfile.ZipFile(target_zip, 'r') as zip_ref:
                 zip_ref.extractall(target_extract_dir)
 
-            # Copy all contents from source to merge directory
             print("\nCopying all files from source...")
             for item in os.listdir(source_extract_dir):
                 s = os.path.join(source_extract_dir, item)
@@ -341,7 +354,6 @@ class Mvcm:
                 else:
                     shutil.copy2(s, d)
 
-            # Delete specific directories from merge directory
             print("\nDeleting directories from merge that will be replaced:")
             directories_to_replace = ['licensemanager', 'tomcat', 'security']
             for directory in directories_to_replace:
@@ -350,52 +362,33 @@ class Mvcm:
                     print(f"- Deleting /{directory}")
                     shutil.rmtree(merged_dir_path)
 
-            # Copy directories from target
             print("\nCopying directories from target:")
             for directory in directories_to_replace:
                 target_dir_path = os.path.join(target_extract_dir, directory)
                 merged_dir_path = os.path.join(merge_file_dir, directory)
-                
                 if os.path.exists(target_dir_path):
                     print(f"- Copying /{directory}")
                     shutil.copytree(target_dir_path, merged_dir_path)
 
-            # Create merged zip file with specific naming convention
+            # Create merged zip file
             from datetime import datetime
             current_date = datetime.now().strftime("%d%b%Y").upper()
             version = "4.1.05"
-            
             source_server = source_hostname.split('.')[0].upper()
             target_server = target_hostname.split('.')[0].upper()
-            
             merged_zip_name = f"{source_server}_{target_server}_Merged_V{version}_{current_date}.zip"
-            merged_zip_path = os.path.join(merge_base_dir, merged_zip_name)
+            merged_zip_path = os.path.join(user_docs, merged_zip_name)
 
             print("\nCreating merged zip file...")
             with zipfile.ZipFile(merged_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # Change directory to merge_file_dir to preserve correct hierarchy
                 original_dir = os.getcwd()
                 os.chdir(merge_file_dir)
-                
-                # Add all files and directories from current directory
                 for root, dirs, files in os.walk('.'):
                     for file in files:
                         file_path = os.path.join(root, file)
-                        # Remove the leading ./ or .\ from the path
                         arcname = file_path[2:] if file_path.startswith('./') or file_path.startswith('.\\') else file_path
                         zipf.write(file_path, arcname)
-                
-                # Change back to original directory
                 os.chdir(original_dir)
-
-            print(f"\nMerged zip contents:")
-            with zipfile.ZipFile(merged_zip_path, 'r') as zip_ref:
-                file_list = zip_ref.namelist()
-                print(f"Total files: {len(file_list)}")
-                print("Key directories:")
-                for d in directories_to_replace:
-                    files = [f for f in file_list if f.startswith(f"{d}/")]
-                    print(f"- /{d}/: {len(files)} files")
 
             print(f"\nMerged zip file created:")
             print(f"- Location: {merged_zip_path}")
