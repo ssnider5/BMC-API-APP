@@ -92,20 +92,20 @@ Error messages are displayed to users through popup dialogs or the status bar.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the FISERV License - see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
 For support, please:
 - Open an issue in the GitHub repository
-- Contact the development team
+- Send me an email or message me on teams sean.snider@fiserv.com
 - Check the documentation in the `docs` folder
 
 ## Acknowledgments
 
 - BMC API documentation and team
-- Contributors to the project
-- Python Tkinter community
+- Sean Snider for everything
+- Kevin Lyles for helping test the UI
 
 ## Version History
 
