@@ -197,8 +197,6 @@ class UploadPanel(tk.Frame):
         self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_file)
         browse_button.pack(side=tk.LEFT)
-        self.upload_button = tk.Button(self, text="Upload", command=self.upload_file, state=tk.DISABLED)
-        self.upload_button.pack(pady=10)
         self.file_path.trace('w', self.on_file_path_change)
 
     def browse_file(self):
@@ -206,15 +204,11 @@ class UploadPanel(tk.Frame):
             title="Select a ZIP file", filetypes=[("ZIP files", "*.zip")])
         if filename:
             self.file_path.set(filename)
+            self.on_file_selected(filename)  # Call callback immediately when file is selected
 
     def on_file_path_change(self, *args):
         if self.file_path.get():
-            self.upload_button.config(state=tk.NORMAL)
-        else:
-            self.upload_button.config(state=tk.DISABLED)
-
-    def upload_file(self):
-        self.on_file_selected(self.file_path.get())
+            self.on_file_selected(self.file_path.get())  # Call callback when path changes
 
 # -------------------------------
 # Create Panel
@@ -240,13 +234,16 @@ class CreatePanel(tk.Frame):
         self.desc_var = tk.StringVar()
         desc_entry = ttk.Entry(desc_frame, textvariable=self.desc_var, width=60)
         desc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.create_button = tk.Button(self, text="Create", command=self.create_config)
-        self.create_button.pack(pady=10)
+        
+        # Add trace to both variables to update the parent when they change
+        self.name_var.trace('w', self.on_field_change)
+        self.desc_var.trace('w', self.on_field_change)
 
-    def create_config(self):
+    def on_field_change(self, *args):
         name = self.name_var.get()
         description = self.desc_var.get()
-        self.on_create(name, description)
+        if name:  # Only trigger callback if name is not empty
+            self.on_create(name, description)
 
 # -------------------------------
 # Update Panel
@@ -442,10 +439,10 @@ class ActionPanel(tk.Frame):
             widget.destroy()
         for widget in self.button_frame.winfo_children():
             widget.destroy()
-        btn_text = action
+
         if action in ['Download', 'Restore']:
             panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
-                                         self.username, self.controller.mvcm, self.on_config_select)
+                                        self.username, self.controller.mvcm, self.on_config_select)
             panel.pack(fill=tk.BOTH, expand=True)
             panel.refresh_configs()
         elif action == 'Upload':
@@ -457,18 +454,23 @@ class ActionPanel(tk.Frame):
         elif action == 'Update':
             panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
             panel.pack(fill=tk.BOTH, expand=True)
-        process_button = tk.Button(self.button_frame, text=btn_text, command=self.process_action)
-        process_button.pack()
+
+        # Add the process button
+        process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
+        process_button.pack(pady=10)
+        
         self.master.bind('<Return>', lambda e: self.process_action())
 
     def on_config_select(self, config_name):
         self.selected_config_name = config_name
 
     def on_file_select(self, file_path):
-        self.selected_file = file_path
+        if file_path and os.path.exists(file_path):
+            self.selected_file = file_path
 
     def on_create(self, name, description):
-        self.create_data = (name, description)
+        if name:
+            self.create_data = (name, description)
 
     def on_update_select(self, source_hostname, target_hostname):
         self.source_hostname = source_hostname
