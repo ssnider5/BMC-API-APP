@@ -549,8 +549,11 @@ class MainApp(tk.Tk):
                                         self.saved_configs, self.servers)
         self.action_panel.pack(fill=tk.BOTH, expand=True)
 
-if __name__ == "__main__":
+def main():
     mvcm_instance = mvcm.Mvcm()
     controller = BusinessController(mvcm_instance)
     app = MainApp(controller)
     app.mainloop()
+
+if __name__ == "__main__":
+    main()
