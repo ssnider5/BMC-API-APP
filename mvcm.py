@@ -5,77 +5,84 @@ import atexit
 import requests
 import json
 import sys
-import zipfile
 import io
-import os
 from http import HTTPStatus
 from http.cookiejar import CookieJar
+import os
+import shutil
+import zipfile
+from pathlib import Path
 
-from urllib3.exceptions import InsecureRequestWarning
+from urllib3.exceptions import InsecureRequestWarning # type: ignore
 
 #
 # This class manages the connection to the BMC AMI Console Management
 # server. 
 #
 class Mvcm:
-    _traceon = True
+    _traceon = False
 
 
     #
     # Connect to the server (host) with the username and password
     # 
     def connect(self, host, user, password):
-
         self.traceon = Mvcm._traceon
-        self.traceon = True
+        self.traceon = False
         print(f'mvcm connect traceon = {self.traceon}')
 
         requests.packages.urllib3.disable_warnings()
 
-
         self.trace(f"connect {host} {user} {password}")
-
         self.encrypted = True
-
-        self.trace('connect 1')
         self.host = host
         self.user = user
         self.password = password
 
         self.apiSession = ''
-        self.cookies = requests.cookies.RequestsCookieJar()
+        self.cookies = {}  # Changed to regular dictionary
 
-        # 
-        # GET of the product info. This gets the CSRF token 
-        # in a cookie
+        # GET of the product info to get initial cookies
         r = self.get('/productinfo')
         self.trace(f'seed status = {r.status_code}')
 
+        # Parse Set-Cookie header
+        if 'Set-Cookie' in r.headers:
+            cookies_header = r.headers['Set-Cookie'].split(', ')
+            for cookie in cookies_header:
+                if 'JSESSIONID=' in cookie:
+                    self.jsessionid = cookie.split(';')[0].split('=')[1]
+                    self.cookies['JSESSIONID'] = self.jsessionid
+                elif 'XSRF-TOKEN=' in cookie:
+                    self.xsrf_token = cookie.split(';')[0].split('=')[1]
+                    self.cookies['XSRF-TOKEN'] = self.xsrf_token
+
+        # Perform logon
         self.logon()
 
         atexit.register(self.exiting)
 
 
-    #
-    # Performs a logon with the credentials provided in the connect call
-    #
     def logon(self):
         self.trace("logon================================================")
-        j = {'userid' : self.user, 'password' :  self.password}
+        j = {'userid': self.user, 'password': self.password}
         r = self.post('/viewerlogon', j)
+        
         if r.status_code == 200:
             print("Logon Successful")
-        if r.status_code != 200:
+            # Parse Set-Cookie header for x-api-session
+            if 'Set-Cookie' in r.headers:
+                cookie_header = r.headers['Set-Cookie']
+                if 'x-api-session=' in cookie_header:
+                    self.apiSession = cookie_header.split(';')[0].split('=')[1]
+                    self.cookies['x-api-session'] = self.apiSession
+
+            self.trace("saving cookies " + str(self.cookies))
+        else:
             print('Logon error: ' + str(r.status_code))
             self.trace(str(r.content))
             sys.exit(1)
-        self.trace('Content: ' + str(r.content))
-        self.trace('Content: ')
-        self.trace(json.dumps(r.json(), indent=2))    
-        self.apiSession = r.json()["token"]
-        self.trace('logon api session = ' + self.apiSession)
-        self.cookies = { 'x-api-session' : self.apiSession }
-        self.trace("saving cookies " + str(self.cookies))
+
         return self.apiSession
 
     #
@@ -157,7 +164,7 @@ class Mvcm:
         self.traceheaders(r.headers)
         self.trace('')
         if not r.ok:
-            self.print(f'HTTP: {r.status_code} from {self.mkurl(path)}')
+            print(f'HTTP: {r.status_code} from {self.mkurl(path)}')
         return r
 
     #
@@ -165,13 +172,13 @@ class Mvcm:
     #
     def post(self, path, content):
         headers = {}
-        if self.apiSession != None:
-            headers['x-api-session'] = self.apiSession 
+        if hasattr(self, 'apiSession') and self.apiSession:
+            headers['x-api-session'] = self.apiSession
 
-        if 'XSRF-TOKEN' in self.cookies:
-            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
+        if hasattr(self, 'xsrf_token'):
+            headers['X-XSRF-TOKEN'] = self.xsrf_token
         
-        self.trace(f'POST /mvcm-api{path}' )
+        self.trace(f'POST /mvcm-api{path}')
         self.trace('Headers')
         self.traceheaders(headers)
         self.trace('Cookies')
@@ -180,16 +187,34 @@ class Mvcm:
         self.trace('Content: ' + str(content))
         self.trace(json.dumps(content, indent=2))
         
-        r = requests.post(url=self.mkurl(path) ,headers = headers, json=content, verify=False, cookies=self.cookies)
+        r = requests.post(
+            url=self.mkurl(path),
+            headers=headers,
+            json=content,
+            verify=False,
+            cookies=self.cookies
+        )
 
-        self.cookies.update(r.cookies)
+        # Update cookies if new ones are received
+        if 'Set-Cookie' in r.headers:
+            cookies_header = r.headers['Set-Cookie'].split(', ')
+            for cookie in cookies_header:
+                if 'JSESSIONID=' in cookie:
+                    self.jsessionid = cookie.split(';')[0].split('=')[1]
+                    self.cookies['JSESSIONID'] = self.jsessionid
+                elif 'XSRF-TOKEN=' in cookie:
+                    self.xsrf_token = cookie.split(';')[0].split('=')[1]
+                    self.cookies['XSRF-TOKEN'] = self.xsrf_token
+                elif 'x-api-session=' in cookie:
+                    self.apiSession = cookie.split(';')[0].split('=')[1]
+                    self.cookies['x-api-session'] = self.apiSession
+
         self.trace('Response:')
         self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
         self.traceheaders(r.headers)
         self.trace('')
-        self.trace(f'    status: {r.status_code} from {self.mkurl(path)}')
         if not r.ok:
-            self.print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
+            print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
         return r
 
 
@@ -265,6 +290,122 @@ class Mvcm:
         r = requests.delete(url=self.mkurl(path) ,headers = headers, verify=False, cookies=self.cookies)
         self.trace(f'{r.status_code} {HTTPStatus(r.status_code).phrase}')
         return r
+
+
+
+    def merge_configurations(self, username, source_hostname, target_hostname):
+        """Merge source and target configurations"""
+        try:
+            # Define all required directories
+            user_docs = os.path.join(os.path.expanduser('~'), "OneDrive - Fiserv Corp", "Documents")
+            merge_base_dir = os.path.join(user_docs, "MergedSaveConfig")
+            source_extract_dir = os.path.join(merge_base_dir, "sourceExtracted")
+            target_extract_dir = os.path.join(merge_base_dir, "targetExtracted")
+            merge_file_dir = os.path.join(merge_base_dir, "mergeFile")
+
+            # Create directories if they don't exist
+            for dir_path in [merge_base_dir, source_extract_dir, target_extract_dir, merge_file_dir]:
+                if not os.path.exists(dir_path):
+                    os.makedirs(dir_path)
+
+            # Define source and target zip files
+            source_zip = os.path.join(merge_base_dir, "source_Merge.zip")
+            target_zip = os.path.join(merge_base_dir, "target_Merge.zip")
+
+            print(f"\nSource zip size: {os.path.getsize(source_zip)} bytes")
+            print(f"Target zip size: {os.path.getsize(target_zip)} bytes")
+
+            # Clean existing extracted directories
+            #for dir_path in [source_extract_dir, target_extract_dir, merge_file_dir]:
+            #    if os.path.exists(dir_path):
+            #        shutil.rmtree(dir_path)
+            #     os.makedirs(dir_path)
+
+            # Extract source zip
+            print("\nExtracting source zip...")
+            with zipfile.ZipFile(source_zip, 'r') as zip_ref:
+                zip_ref.extractall(source_extract_dir)
+
+            # Extract target zip
+            print("\nExtracting target zip...")
+            with zipfile.ZipFile(target_zip, 'r') as zip_ref:
+                zip_ref.extractall(target_extract_dir)
+
+            # Copy all contents from source to merge directory
+            print("\nCopying all files from source...")
+            for item in os.listdir(source_extract_dir):
+                s = os.path.join(source_extract_dir, item)
+                d = os.path.join(merge_file_dir, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
+
+            # Delete specific directories from merge directory
+            print("\nDeleting directories from merge that will be replaced:")
+            directories_to_replace = ['licensemanager', 'tomcat', 'security']
+            for directory in directories_to_replace:
+                merged_dir_path = os.path.join(merge_file_dir, directory)
+                if os.path.exists(merged_dir_path):
+                    print(f"- Deleting /{directory}")
+                    shutil.rmtree(merged_dir_path)
+
+            # Copy directories from target
+            print("\nCopying directories from target:")
+            for directory in directories_to_replace:
+                target_dir_path = os.path.join(target_extract_dir, directory)
+                merged_dir_path = os.path.join(merge_file_dir, directory)
+                
+                if os.path.exists(target_dir_path):
+                    print(f"- Copying /{directory}")
+                    shutil.copytree(target_dir_path, merged_dir_path)
+
+            # Create merged zip file with specific naming convention
+            from datetime import datetime
+            current_date = datetime.now().strftime("%d%b%Y").upper()
+            version = "4.1.05"
+            
+            source_server = source_hostname.split('.')[0].upper()
+            target_server = target_hostname.split('.')[0].upper()
+            
+            merged_zip_name = f"{source_server}_{target_server}_Merged_V{version}_{current_date}.zip"
+            merged_zip_path = os.path.join(merge_base_dir, merged_zip_name)
+
+            print("\nCreating merged zip file...")
+            with zipfile.ZipFile(merged_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Change directory to merge_file_dir to preserve correct hierarchy
+                original_dir = os.getcwd()
+                os.chdir(merge_file_dir)
+                
+                # Add all files and directories from current directory
+                for root, dirs, files in os.walk('.'):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        # Remove the leading ./ or .\ from the path
+                        arcname = file_path[2:] if file_path.startswith('./') or file_path.startswith('.\\') else file_path
+                        zipf.write(file_path, arcname)
+                
+                # Change back to original directory
+                os.chdir(original_dir)
+
+            print(f"\nMerged zip contents:")
+            with zipfile.ZipFile(merged_zip_path, 'r') as zip_ref:
+                file_list = zip_ref.namelist()
+                print(f"Total files: {len(file_list)}")
+                print("Key directories:")
+                for d in directories_to_replace:
+                    files = [f for f in file_list if f.startswith(f"{d}/")]
+                    print(f"- /{d}/: {len(files)} files")
+
+            print(f"\nMerged zip file created:")
+            print(f"- Location: {merged_zip_path}")
+            print(f"- Size: {os.path.getsize(merged_zip_path)} bytes")
+
+            return merged_zip_path
+
+        except Exception as e:
+            print(f"Error during merge: {str(e)}")
+            raise
 
 
     #
