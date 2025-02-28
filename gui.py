@@ -2,7 +2,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 import os
 import mvcm
-from business import BusinessController  # Import your business logic from business.py
+from business import BusinessController
+import threading
+from tkinter import messagebox
+import time
 
 # -------------------------------
 # Server Selection Panel – kept for reference
@@ -500,13 +503,114 @@ class ActionPanel(tk.Frame):
             else:
                 print("Name is required for creation.")
         elif action == 'Update' and self.source_hostname and self.target_hostname:
-            success = self.controller.update_configuration(self.source_hostname,
-                                                             self.target_hostname,
-                                                             self.username,
-                                                             self.password)
-            print("Update process completed successfully!" if success else "Update failed.")
+            self.process_update()
         else:
             print("Required selections are missing for the chosen action.")
+
+    def process_update(self):
+        # Disable all buttons during update
+        for button in self.action_buttons.values():
+            button.config(state=tk.DISABLED)
+        
+        # Create and show loading dialog
+        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
+        loading_dialog.start()  # Start the progress bar animation
+        
+        def update_thread():
+            success = False
+            error_message = None
+            try:
+                success = self.controller.update_configuration(
+                    self.source_hostname,
+                    self.target_hostname,
+                    self.username,
+                    self.password
+                )
+            except Exception as e:
+                error_message = str(e)
+            finally:
+                # Schedule UI updates in the main thread
+                if loading_dialog.winfo_exists():  # Check if dialog still exists
+                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
+        
+        # Start the update process in a separate thread
+        thread = threading.Thread(target=update_thread, daemon=True)
+        thread.start()
+
+    def update_complete(self, loading_dialog, success, error_message=None):
+        try:
+            # Re-enable all buttons
+            for button in self.action_buttons.values():
+                button.config(state=tk.NORMAL)
+            
+            # Destroy the loading dialog
+            if loading_dialog.winfo_exists():
+                loading_dialog.destroy()
+            
+            # Show appropriate message
+            if success:
+                messagebox.showinfo("Success", "Update process completed successfully!")
+            else:
+                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            print(f"Error in update_complete: {str(e)}")
+
+# ------------------------------
+# LOADING SCREEN
+# ------------------------------
+class LoadingDialog(tk.Toplevel):
+    def __init__(self, parent, message="Processing..."):
+        super().__init__(parent)
+        self.title("Loading")
+        
+        # Make the dialog modal
+        self.transient(parent)
+        self.grab_set()
+        
+        # Remove window decorations
+        self.overrideredirect(True)
+        
+        # Center the dialog on the parent window
+        window_width = 300
+        window_height = 100
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Create a frame with a border
+        main_frame = ttk.Frame(self, relief='raised', borderwidth=2)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Add message label
+        self.message_label = ttk.Label(main_frame, text=message, font=('TkDefaultFont', 10))
+        self.message_label.pack(pady=10)
+        
+        # Add progress bar
+        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate', length=200)
+        self.progress_bar.pack(pady=10)
+        
+        # Start the progress bar animation
+        self.progress_bar.start(10)
+        
+        # Force update of the dialog
+        self.update_idletasks()
+        
+        # Keep dialog on top
+        self.lift()
+        self.focus_force()
+
+    def update_progress(self):
+        # Keep updating the dialog while it's visible
+        if self.winfo_exists():
+            self.update_idletasks()
+            self.after(100, self.update_progress)
+
+    def start(self):
+        self.update_progress()
+
 # -------------------------------
 # Main Application – Login screen appears immediately
 # -------------------------------
