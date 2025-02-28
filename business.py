@@ -1,6 +1,20 @@
 import mvcm
 import os
 
+
+def printResponseError(response):
+    # Print all details about the response
+    print(f"Status Code: {response.status_code}")
+    print(f"Headers: {response.headers}")
+    print(f"Content: {response.content}")
+    print(f"Text: {response.text}")
+    print(f"JSON: {response.json() if response.headers['Content-Type'] == 'application/json' else 'Not a JSON response'}")
+    print(f"URL: {response.url}")
+    print(f"Elapsed Time: {response.elapsed}")
+    print(f"Request Headers: {response.request.headers}")
+    print(f"Request Method: {response.request.method}")
+    print(f"Request URL: {response.request.url}")
+
 class BusinessController:
     def __init__(self, mvcm_instance):
         self.mvcm = mvcm_instance
@@ -23,6 +37,9 @@ class BusinessController:
 
     def restore_configuration(self, config_name):
         response = self.mvcm.post(f'/saved-configurations/{config_name}/operations/restore', None)
+        if not response.ok:
+            printResponseError(response)
+          
         return response.ok
 
     def upload_configuration(self, file_path):
@@ -87,3 +104,16 @@ class BusinessController:
             pass
             
         return success
+    
+    def printResponseError(response):
+        # Print all details about the response
+        print(f"Status Code: {response.status_code}")
+        print(f"Headers: {response.headers}")
+        print(f"Content: {response.content}")
+        print(f"Text: {response.text}")
+        print(f"JSON: {response.json() if response.headers['Content-Type'] == 'application/json' else 'Not a JSON response'}")
+        print(f"URL: {response.url}")
+        print(f"Elapsed Time: {response.elapsed}")
+        print(f"Request Headers: {response.request.headers}")
+        print(f"Request Method: {response.request.method}")
+        print(f"Request URL: {response.request.url}")

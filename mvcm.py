@@ -171,11 +171,11 @@ class Mvcm:
     #
     def post(self, path, content):
         headers = {}
-        if hasattr(self, 'apiSession') and self.apiSession:
+        if self.apiSession is not None:  # Changed to match postbinary's check
             headers['x-api-session'] = self.apiSession
 
-        if hasattr(self, 'xsrf_token'):
-            headers['X-XSRF-TOKEN'] = self.xsrf_token
+        if 'XSRF-TOKEN' in self.cookies:  # Changed to match postbinary's check
+            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
         
         self.trace(f'POST /mvcm-api{path}')
         self.trace('Headers')
@@ -186,35 +186,34 @@ class Mvcm:
         self.trace('Content: ' + str(content))
         self.trace(json.dumps(content, indent=2))
         
-        r = requests.post(
-            url=self.mkurl(path),
-            headers=headers,
-            json=content,
-            verify=False,
-            cookies=self.cookies
-        )
+        try:  # Added try-except block like postbinary
+            r = requests.post(
+                url=self.mkurl(path),
+                headers=headers,
+                json=content,
+                cookies=self.cookies,
+                verify=False
+            )
 
-        # Update cookies if new ones are received
-        if 'Set-Cookie' in r.headers:
-            cookies_header = r.headers['Set-Cookie'].split(', ')
-            for cookie in cookies_header:
-                if 'JSESSIONID=' in cookie:
-                    self.jsessionid = cookie.split(';')[0].split('=')[1]
-                    self.cookies['JSESSIONID'] = self.jsessionid
-                elif 'XSRF-TOKEN=' in cookie:
-                    self.xsrf_token = cookie.split(';')[0].split('=')[1]
-                    self.cookies['XSRF-TOKEN'] = self.xsrf_token
-                elif 'x-api-session=' in cookie:
-                    self.apiSession = cookie.split(';')[0].split('=')[1]
-                    self.cookies['x-api-session'] = self.apiSession
+            # Update cookies directly from response cookies like postbinary
+            self.cookies.update(r.cookies)
+            
+            self.trace('Response:')
+            self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
+            self.traceheaders(r.headers)
+            self.trace('')
+            
+            if not r.ok:
+                print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
+                print(f'    Request headers sent: {headers}')
+                print(f'    Response headers: {dict(r.headers)}')
+                print(f'    Response content: {r.text}')
+                
+            return r
 
-        self.trace('Response:')
-        self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
-        self.traceheaders(r.headers)
-        self.trace('')
-        if not r.ok:
-            print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
-        return r
+        except Exception as e:
+            print(f"Exception during POST request: {str(e)}")
+            raise
 
 
     def postbinary(self, path, file_path):
