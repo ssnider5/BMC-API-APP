@@ -5,7 +5,7 @@ import mvcm
 from business import BusinessController  # Import your business logic from business.py
 
 # -------------------------------
-# (Optional) Server Selection Panel – kept for reference
+# Server Selection Panel – kept for reference
 # -------------------------------
 class ServerSelectionPanel(tk.Frame):
     def __init__(self, master, on_select, **kwargs):
@@ -124,14 +124,6 @@ class DownloadRestorePanel(tk.Frame):
         self.populate_configs()
         self.bind_all('<KeyPress>', self.handle_number_key)
         self.config_tree.bind('<<TreeviewSelect>>', self.on_tree_select)
-        if self.action == 'Download':
-            download_frame = ttk.Frame(container)
-            download_frame.pack(fill=tk.X, pady=(10, 0))
-            ttk.Label(download_frame, text="Download Location:").pack(side=tk.LEFT, padx=(0, 10))
-            self.download_location = tk.StringVar(
-                value=fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip")
-            self.download_entry = ttk.Entry(download_frame, textvariable=self.download_location, width=80)
-            self.download_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def refresh_configs(self):
         try:
@@ -332,7 +324,7 @@ class UpdatePanel(tk.Frame):
             self.on_update(self.source_hostname, self.target_hostname)
 
 # -------------------------------
-# Action Panel – now contains a new Server dropdown
+# Action Panel – uses keybindings instead of a dropdown
 # -------------------------------
 class ActionPanel(tk.Frame):
     def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
@@ -347,10 +339,17 @@ class ActionPanel(tk.Frame):
         self.create_data = None
         self.source_hostname = None
         self.target_hostname = None
+        self.current_action = None  # holds the currently selected action
         self.create_widgets()
+        # Bind Shift+number keys for actions
+        self.master.bind("!", lambda e: self.show_panel("Download"))
+        self.master.bind("@", lambda e: self.show_panel("Upload"))
+        self.master.bind("#", lambda e: self.show_panel("Restore"))
+        self.master.bind("$", lambda e: self.show_panel("Create"))
+        self.master.bind("%", lambda e: self.show_panel("Update"))
 
     def create_widgets(self):
-        # New Server Selection Dropdown (above the action drop-down)
+        # Server Selection Dropdown (unchanged)
         server_frame = ttk.Frame(self)
         server_frame.pack(pady=5)
         ttk.Label(server_frame, text="Server:").pack(side=tk.LEFT, padx=(0, 5))
@@ -359,19 +358,23 @@ class ActionPanel(tk.Frame):
         self.server_dropdown = ttk.Combobox(server_frame, textvariable=self.server_var, state='readonly')
         self.server_dropdown['values'] = server_display_values
         self.server_dropdown.pack(side=tk.LEFT)
-        # Set default selection to DR - Chandler (first server)
         default_server_str = server_display_values[0]
         self.server_var.set(default_server_str)
         self.selected_server = self.servers[0]
         self.server_dropdown.bind('<<ComboboxSelected>>', self.on_server_changed)
 
+        # Instructions for keybindings instead of an action dropdown
+        instructions = ("Keybindings:\n"
+                        "Shift+1: Download\n"
+                        "Shift+2: Upload\n"
+                        "Shift+3: Restore\n"
+                        "Shift+4: Create\n"
+                        "Shift+5: Update")
+        self.instructions_label = ttk.Label(self, text=instructions, font=('TkDefaultFont', 10))
+        self.instructions_label.pack(pady=10)
+
         ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold')).pack(pady=10)
-        ttk.Label(self, text="What would you like to do today?").pack(pady=10)
-        self.action_var = tk.StringVar()
-        self.action_dropdown = ttk.Combobox(self, textvariable=self.action_var, state='readonly')
-        self.action_dropdown['values'] = ('', 'Download', 'Upload', 'Restore', 'Create', 'Update')
-        self.action_dropdown.pack(pady=10)
-        self.action_dropdown.bind('<<ComboboxSelected>>', self.on_action_selected)
+        ttk.Label(self, text="Use the keybindings above to select an action.").pack(pady=10)
         self.panel_container = ttk.Frame(self)
         self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
         self.button_frame = ttk.Frame(self)
@@ -384,42 +387,39 @@ class ActionPanel(tk.Frame):
                 # Reconnect with the new hostname using current credentials
                 self.controller.connect(hostname, self.username, self.password)
                 self.selected_server = (env, hostname)
-                # Fetch new saved configurations from the new server
                 new_configs = self.controller.get_saved_configurations()
                 self.saved_configs = new_configs
                 print(f"Connected to new server: {selected_str}")
-                # Refresh the sub-panel if it has a refresh method
+                # Refresh any displayed panel that has a refresh_configs method
                 for widget in self.panel_container.winfo_children():
                     if hasattr(widget, 'refresh_configs'):
                         widget.saved_configs = new_configs
                         widget.refresh_configs()
                 break
 
-    def on_action_selected(self, event):
+    def show_panel(self, action):
+        self.current_action = action
+        # Clear any existing panel
         for widget in self.panel_container.winfo_children():
             widget.destroy()
         for widget in self.button_frame.winfo_children():
             widget.destroy()
-        action = self.action_var.get()
+        btn_text = action
         if action in ['Download', 'Restore']:
             panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
                                          self.username, self.controller.mvcm, self.on_config_select)
             panel.pack(fill=tk.BOTH, expand=True)
-            btn_text = "Download" if action == 'Download' else "Restore"
+            # Auto-refresh the saved configurations on panel switch
+            panel.refresh_configs()
         elif action == 'Upload':
             panel = UploadPanel(self.panel_container, self.on_file_select)
             panel.pack(fill=tk.BOTH, expand=True)
-            btn_text = "Upload"
         elif action == 'Create':
             panel = CreatePanel(self.panel_container, self.on_create)
             panel.pack(fill=tk.BOTH, expand=True)
-            btn_text = "Create"
         elif action == 'Update':
             panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
             panel.pack(fill=tk.BOTH, expand=True)
-            btn_text = "Update"
-        else:
-            btn_text = "Execute"
         process_button = tk.Button(self.button_frame, text=btn_text, command=self.process_action)
         process_button.pack()
         self.master.bind('<Return>', lambda e: self.process_action())
@@ -438,7 +438,7 @@ class ActionPanel(tk.Frame):
         self.target_hostname = target_hostname
 
     def process_action(self):
-        action = self.action_var.get()
+        action = self.current_action
         if action == 'Download' and self.selected_config_name:
             dl_location = None
             for widget in self.panel_container.winfo_children():
@@ -482,7 +482,6 @@ class MainApp(tk.Tk):
         super().__init__()
         self.controller = controller
         self.title("Server Selector")
-        # Define your list of servers
         self.servers = [
             ("DR - Chandler", "qdlp2bcmapp0002.ess.fiserv.one"),
             ("DR - Omaha", "Sylp2bcmapp0002.ess.fiserv.one")
@@ -498,7 +497,6 @@ class MainApp(tk.Tk):
         for widget in self.winfo_children():
             widget.destroy()
         self.title("Login")
-        # Use the DR - Chandler hostname (first server) by default
         default_hostname = self.servers[0][1]
         self.login_panel = LoginPanel(self, default_hostname, on_login=self.on_login)
         self.login_panel.pack(fill=tk.BOTH, expand=True)
@@ -506,7 +504,6 @@ class MainApp(tk.Tk):
     def on_login(self, hostname, username, password):
         self.username = username
         self.password = password
-        # Test credentials with the default hostname
         self.controller.connect(hostname, username, password)
         self.saved_configs = self.controller.get_saved_configurations()
         self.show_action_panel()
