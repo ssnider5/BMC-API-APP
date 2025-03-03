@@ -4,24 +4,14 @@ import atexit
 import requests
 import json
 import sys
-import io
 from http import HTTPStatus
-from http.cookiejar import CookieJar
-import os
 from datetime import datetime
 import shutil
-import zipfile
-from pathlib import Path
-import tempfile
 import os
 import zipfile
-import shutil
-import tempfile
 from datetime import datetime
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
-
-from urllib3.exceptions import InsecureRequestWarning # type: ignore
 
 #
 # This class manages the connection to the BMC AMI Console Management
@@ -298,7 +288,7 @@ class Mvcm:
         self.trace(f'{r.status_code} {HTTPStatus(r.status_code).phrase}')
         return r
 
-    def merge_configurations(self, username, source_hostname, target_hostname):
+    def merge_configurations(self, username, source_hostname, target_hostname, merge_base_dir, source_extract_dir, target_extract_dir, merge_file_dir):
         def clear_directory(directory):
             # Walk the directory tree from the bottom up
             for root, dirs, files in os.walk(directory, topdown=False):
@@ -319,12 +309,6 @@ class Mvcm:
                         print(f"Could not delete directory {dir_path}: {e}")
 
         try:
-            # Use the current working directory as the base directory
-            base_dir = os.getcwd()
-            merge_base_dir = os.path.join(base_dir, "MergedSaveConfig")
-            source_extract_dir = os.path.join(merge_base_dir, "sourceExtracted")
-            target_extract_dir = os.path.join(merge_base_dir, "targetExtracted")
-            merge_file_dir = os.path.join(merge_base_dir, "mergeFile")
 
             # Optionally clear the directories without admin rights
             for dir_path in [source_extract_dir, target_extract_dir, merge_file_dir]:

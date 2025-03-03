@@ -7,7 +7,7 @@ BMC API Application is a Python-based GUI tool for managing saved configurations
 ## Features
 
 - **User Authentication:**  
-  A login screen that verifies user credentials.
+  A login screen that verifies user credentials via the DR - Chandler server, but given that they're all under one ESS, it shouldn't matter.
 
 - **Action Panel:**  
   Perform key operations:
@@ -29,32 +29,15 @@ BMC API Application is a Python-based GUI tool for managing saved configurations
 
 - **Python 3.x**  
   Ensure you have Python installed on your system.
-
-- **Tkinter**  
-  Tkinter is bundled with most Python installations.
-
-- **Custom Modules:**  
-  - `mvcm`: Handles API calls.
-  - `business`: Contains the business logic interfacing with `mvcm`.
-
-> **Note:** Ensure that the custom modules (`mvcm` and `business`) are available in your project directory or PYTHONPATH.
+  Code was written in Python 3.11.9 but other versions should work
 
 ## Installation
 
-1. **Clone the Repository:**
-   ```bash
-   git clone https://github.com/your-username/bmc-api-application.git
-   cd bmc-api-application
-   ```
-
-2. **Install Required Dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Environment:**
-   - Copy the `.env.example` file to `.env`
-   - Update the environment variables with your specific settings
+1. **Download Zip File:**
+  - At the top of the page there's a green "<> Code" Button, click it
+  - Select the option "Download ZIP" and choose your preferred location
+  - Extract the files and just run the file called "launch_app.vbs"
+  - It will create a venv and download all the dependencies for the program to run, not influencing your global installs
 
 ## Usage
 
