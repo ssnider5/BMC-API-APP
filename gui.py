@@ -2,7 +2,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 import os
 import mvcm
-from business import BusinessController  # Import your business logic from business.py
+from business import BusinessController
+import threading
+from tkinter import messagebox
+import time
 
 # -------------------------------
 # Server Selection Panel – kept for reference
@@ -194,8 +197,6 @@ class UploadPanel(tk.Frame):
         self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_file)
         browse_button.pack(side=tk.LEFT)
-        self.upload_button = tk.Button(self, text="Upload", command=self.upload_file, state=tk.DISABLED)
-        self.upload_button.pack(pady=10)
         self.file_path.trace('w', self.on_file_path_change)
 
     def browse_file(self):
@@ -203,15 +204,11 @@ class UploadPanel(tk.Frame):
             title="Select a ZIP file", filetypes=[("ZIP files", "*.zip")])
         if filename:
             self.file_path.set(filename)
+            self.on_file_selected(filename)  # Call callback immediately when file is selected
 
     def on_file_path_change(self, *args):
         if self.file_path.get():
-            self.upload_button.config(state=tk.NORMAL)
-        else:
-            self.upload_button.config(state=tk.DISABLED)
-
-    def upload_file(self):
-        self.on_file_selected(self.file_path.get())
+            self.on_file_selected(self.file_path.get())  # Call callback when path changes
 
 # -------------------------------
 # Create Panel
@@ -237,13 +234,16 @@ class CreatePanel(tk.Frame):
         self.desc_var = tk.StringVar()
         desc_entry = ttk.Entry(desc_frame, textvariable=self.desc_var, width=60)
         desc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.create_button = tk.Button(self, text="Create", command=self.create_config)
-        self.create_button.pack(pady=10)
+        
+        # Add trace to both variables to update the parent when they change
+        self.name_var.trace('w', self.on_field_change)
+        self.desc_var.trace('w', self.on_field_change)
 
-    def create_config(self):
+    def on_field_change(self, *args):
         name = self.name_var.get()
         description = self.desc_var.get()
-        self.on_create(name, description)
+        if name:  # Only trigger callback if name is not empty
+            self.on_create(name, description)
 
 # -------------------------------
 # Update Panel
@@ -439,10 +439,10 @@ class ActionPanel(tk.Frame):
             widget.destroy()
         for widget in self.button_frame.winfo_children():
             widget.destroy()
-        btn_text = action
+
         if action in ['Download', 'Restore']:
             panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
-                                         self.username, self.controller.mvcm, self.on_config_select)
+                                        self.username, self.controller.mvcm, self.on_config_select)
             panel.pack(fill=tk.BOTH, expand=True)
             panel.refresh_configs()
         elif action == 'Upload':
@@ -454,18 +454,23 @@ class ActionPanel(tk.Frame):
         elif action == 'Update':
             panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
             panel.pack(fill=tk.BOTH, expand=True)
-        process_button = tk.Button(self.button_frame, text=btn_text, command=self.process_action)
-        process_button.pack()
+
+        # Add the process button
+        process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
+        process_button.pack(pady=10)
+        
         self.master.bind('<Return>', lambda e: self.process_action())
 
     def on_config_select(self, config_name):
         self.selected_config_name = config_name
 
     def on_file_select(self, file_path):
-        self.selected_file = file_path
+        if file_path and os.path.exists(file_path):
+            self.selected_file = file_path
 
     def on_create(self, name, description):
-        self.create_data = (name, description)
+        if name:
+            self.create_data = (name, description)
 
     def on_update_select(self, source_hostname, target_hostname):
         self.source_hostname = source_hostname
@@ -500,13 +505,114 @@ class ActionPanel(tk.Frame):
             else:
                 print("Name is required for creation.")
         elif action == 'Update' and self.source_hostname and self.target_hostname:
-            success = self.controller.update_configuration(self.source_hostname,
-                                                             self.target_hostname,
-                                                             self.username,
-                                                             self.password)
-            print("Update process completed successfully!" if success else "Update failed.")
+            self.process_update()
         else:
             print("Required selections are missing for the chosen action.")
+
+    def process_update(self):
+        # Disable all buttons during update
+        for button in self.action_buttons.values():
+            button.config(state=tk.DISABLED)
+        
+        # Create and show loading dialog
+        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
+        loading_dialog.start()  # Start the progress bar animation
+        
+        def update_thread():
+            success = False
+            error_message = None
+            try:
+                success = self.controller.update_configuration(
+                    self.source_hostname,
+                    self.target_hostname,
+                    self.username,
+                    self.password
+                )
+            except Exception as e:
+                error_message = str(e)
+            finally:
+                # Schedule UI updates in the main thread
+                if loading_dialog.winfo_exists():  # Check if dialog still exists
+                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
+        
+        # Start the update process in a separate thread
+        thread = threading.Thread(target=update_thread, daemon=True)
+        thread.start()
+
+    def update_complete(self, loading_dialog, success, error_message=None):
+        try:
+            # Re-enable all buttons
+            for button in self.action_buttons.values():
+                button.config(state=tk.NORMAL)
+            
+            # Destroy the loading dialog
+            if loading_dialog.winfo_exists():
+                loading_dialog.destroy()
+            
+            # Show appropriate message
+            if success:
+                messagebox.showinfo("Success", "Update process completed successfully!")
+            else:
+                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            print(f"Error in update_complete: {str(e)}")
+
+# ------------------------------
+# LOADING SCREEN
+# ------------------------------
+class LoadingDialog(tk.Toplevel):
+    def __init__(self, parent, message="Processing..."):
+        super().__init__(parent)
+        self.title("Loading")
+        
+        # Make the dialog modal
+        self.transient(parent)
+        self.grab_set()
+        
+        # Remove window decorations
+        self.overrideredirect(True)
+        
+        # Center the dialog on the parent window
+        window_width = 300
+        window_height = 100
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Create a frame with a border
+        main_frame = ttk.Frame(self, relief='raised', borderwidth=2)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Add message label
+        self.message_label = ttk.Label(main_frame, text=message, font=('TkDefaultFont', 10))
+        self.message_label.pack(pady=10)
+        
+        # Add progress bar
+        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate', length=200)
+        self.progress_bar.pack(pady=10)
+        
+        # Start the progress bar animation
+        self.progress_bar.start(10)
+        
+        # Force update of the dialog
+        self.update_idletasks()
+        
+        # Keep dialog on top
+        self.lift()
+        self.focus_force()
+
+    def update_progress(self):
+        # Keep updating the dialog while it's visible
+        if self.winfo_exists():
+            self.update_idletasks()
+            self.after(100, self.update_progress)
+
+    def start(self):
+        self.update_progress()
+
 # -------------------------------
 # Main Application – Login screen appears immediately
 # -------------------------------
@@ -549,8 +655,11 @@ class MainApp(tk.Tk):
                                         self.saved_configs, self.servers)
         self.action_panel.pack(fill=tk.BOTH, expand=True)
 
-if __name__ == "__main__":
+def main():
     mvcm_instance = mvcm.Mvcm()
     controller = BusinessController(mvcm_instance)
     app = MainApp(controller)
     app.mainloop()
+
+if __name__ == "__main__":
+    main()

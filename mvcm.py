@@ -8,9 +8,18 @@ import io
 from http import HTTPStatus
 from http.cookiejar import CookieJar
 import os
+from datetime import datetime
 import shutil
 import zipfile
 from pathlib import Path
+import tempfile
+import os
+import zipfile
+import shutil
+import tempfile
+from datetime import datetime
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
 
 from urllib3.exceptions import InsecureRequestWarning # type: ignore
 
@@ -171,11 +180,11 @@ class Mvcm:
     #
     def post(self, path, content):
         headers = {}
-        if hasattr(self, 'apiSession') and self.apiSession:
+        if self.apiSession is not None:  # Changed to match postbinary's check
             headers['x-api-session'] = self.apiSession
 
-        if hasattr(self, 'xsrf_token'):
-            headers['X-XSRF-TOKEN'] = self.xsrf_token
+        if 'XSRF-TOKEN' in self.cookies:  # Changed to match postbinary's check
+            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
         
         self.trace(f'POST /mvcm-api{path}')
         self.trace('Headers')
@@ -186,35 +195,34 @@ class Mvcm:
         self.trace('Content: ' + str(content))
         self.trace(json.dumps(content, indent=2))
         
-        r = requests.post(
-            url=self.mkurl(path),
-            headers=headers,
-            json=content,
-            verify=False,
-            cookies=self.cookies
-        )
+        try:  # Added try-except block like postbinary
+            r = requests.post(
+                url=self.mkurl(path),
+                headers=headers,
+                json=content,
+                cookies=self.cookies,
+                verify=False
+            )
 
-        # Update cookies if new ones are received
-        if 'Set-Cookie' in r.headers:
-            cookies_header = r.headers['Set-Cookie'].split(', ')
-            for cookie in cookies_header:
-                if 'JSESSIONID=' in cookie:
-                    self.jsessionid = cookie.split(';')[0].split('=')[1]
-                    self.cookies['JSESSIONID'] = self.jsessionid
-                elif 'XSRF-TOKEN=' in cookie:
-                    self.xsrf_token = cookie.split(';')[0].split('=')[1]
-                    self.cookies['XSRF-TOKEN'] = self.xsrf_token
-                elif 'x-api-session=' in cookie:
-                    self.apiSession = cookie.split(';')[0].split('=')[1]
-                    self.cookies['x-api-session'] = self.apiSession
+            # Update cookies directly from response cookies like postbinary
+            self.cookies.update(r.cookies)
+            
+            self.trace('Response:')
+            self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
+            self.traceheaders(r.headers)
+            self.trace('')
+            
+            if not r.ok:
+                print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
+                print(f'    Request headers sent: {headers}')
+                print(f'    Response headers: {dict(r.headers)}')
+                print(f'    Response content: {r.text}')
+                
+            return r
 
-        self.trace('Response:')
-        self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
-        self.traceheaders(r.headers)
-        self.trace('')
-        if not r.ok:
-            print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
-        return r
+        except Exception as e:
+            print(f"Exception during POST request: {str(e)}")
+            raise
 
 
     def postbinary(self, path, file_path):
@@ -311,25 +319,19 @@ class Mvcm:
                         print(f"Could not delete directory {dir_path}: {e}")
 
         try:
-            # Define directories
-            user_docs = os.path.join(os.path.expanduser('~'), "OneDrive - Fiserv Corp", "Documents")
-            merge_base_dir = os.path.join(user_docs, "MergedSaveConfig")
+            # Use the current working directory as the base directory
+            base_dir = os.getcwd()
+            merge_base_dir = os.path.join(base_dir, "MergedSaveConfig")
             source_extract_dir = os.path.join(merge_base_dir, "sourceExtracted")
             target_extract_dir = os.path.join(merge_base_dir, "targetExtracted")
             merge_file_dir = os.path.join(merge_base_dir, "mergeFile")
-            
-            # Create directories if they don't exist
-            for dir_path in [merge_base_dir, source_extract_dir, target_extract_dir, merge_file_dir]:
-                if not os.path.exists(dir_path):
-                    os.makedirs(dir_path)
-                    print(f"Created directory: {dir_path}")
 
             # Optionally clear the directories without admin rights
             for dir_path in [source_extract_dir, target_extract_dir, merge_file_dir]:
                 if os.path.exists(dir_path):
                     clear_directory(dir_path)  # use the helper function defined above
 
-            # Continue with extraction and merging...
+            # Define source and target zip paths within the base directory
             source_zip = os.path.join(merge_base_dir, "source_Merge.zip")
             target_zip = os.path.join(merge_base_dir, "target_Merge.zip")
 
@@ -370,24 +372,21 @@ class Mvcm:
                     shutil.copytree(target_dir_path, merged_dir_path)
 
             # Create merged zip file with specific naming convention
-            from datetime import datetime
             current_date = datetime.now().strftime("%d%b%Y").upper()
             version = "4.1.05"
             source_server = source_hostname.split('.')[0].upper()
             target_server = target_hostname.split('.')[0].upper()
             merged_zip_name = f"{source_server}_{target_server}_Merged_V{version}_{current_date}"
 
-            # Update descriptor.xml
+            # Update descriptor.xml if it exists
             descriptor_path = os.path.join(merge_file_dir, "descriptor.xml")
             if os.path.exists(descriptor_path):
                 print("\nUpdating descriptor.xml...")
-                
                 # Read the current content
                 with open(descriptor_path, 'r') as file:
                     content = file.read()
                 
                 # Parse XML
-                import xml.etree.ElementTree as ET
                 root = ET.fromstring(content)
                 
                 # Update the name field
@@ -396,20 +395,17 @@ class Mvcm:
                     name_element.text = f"{source_server}_{target_server}_Merged_V{version}_{current_date}"
                     print(f"Updated name in descriptor.xml to: {name_element.text}")
 
-                # Update the name field
+                # Update the description field
                 description_element = root.find('description')
                 if description_element is not None:
                     description_element.text = f"Config from {source_server} brought to {target_server} on {current_date}"
-                    print(f"Updated name in descriptor.xml to: {description_element.text}")
+                    print(f"Updated description in descriptor.xml to: {description_element.text}")
 
-                    
-                
                 # Write back the modified XML
                 tree = ET.ElementTree(root)
                 tree.write(descriptor_path, encoding='utf-8', xml_declaration=True)
                 
                 # Format the XML file with proper indentation
-                import xml.dom.minidom
                 with open(descriptor_path, 'r') as file:
                     xml_content = file.read()
                 dom = xml.dom.minidom.parseString(xml_content)
@@ -433,7 +429,7 @@ class Mvcm:
             # Create the zip file using shutil.make_archive
             shutil.make_archive(merged_zip_path, 'zip', 'mergeFile')
             
-            # Change back to original directory
+            # Change back to the original directory
             os.chdir(original_dir)
 
             print(f"\nMerged zip contents:")
@@ -445,17 +441,12 @@ class Mvcm:
                     files = [f for f in file_list if f.startswith(f"{d}/")]
                     print(f"- /{d}/: {len(files)} files")
 
-            # Create copy with 'c' prefix
+            # Create a copy with a 'c' prefix NO COPY CREATED 
             copy_zip_name = f"c{merged_zip_name}.zip"
             copy_zip_path = os.path.join(merge_base_dir, copy_zip_name)
-            
-            print(f"\nCreating copy of zip file...")
-            shutil.copy2(f"{merged_zip_path}.zip", copy_zip_path)
-            print(f"Copy created: {copy_zip_path}")
 
             print(f"\nMerged zip files created:")
             print(f"- Original Location: {merged_zip_path}.zip")
-            print(f"- Copy Location: {copy_zip_path}")
             print(f"- Size: {os.path.getsize(f'{merged_zip_path}.zip')} bytes")
 
             return f"{merged_zip_path}.zip"
@@ -463,7 +454,6 @@ class Mvcm:
         except Exception as e:
             print(f"Error during merge: {str(e)}")
             raise
-
     #
     # Exit hook. You can perform more cleanup here.
     #
