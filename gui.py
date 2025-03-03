@@ -5,7 +5,7 @@ import mvcm
 from business import BusinessController
 import threading
 from tkinter import messagebox
-import time
+from tkinter import PhotoImage
 
 # -------------------------------
 # Server Selection Panel – kept for reference
@@ -67,6 +67,7 @@ class LoginPanel(tk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
+
         tk.Label(self, text="Username").pack(pady=5)
         self.username_entry = tk.Entry(self)
         self.username_entry.pack(pady=5)

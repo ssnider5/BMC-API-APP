@@ -1,7 +1,5 @@
 import mvcm
 import os
-import shutil
-
 
 def printResponseError(response):
     # Print all details about the response
@@ -124,7 +122,7 @@ class BusinessController:
                 f.write(target_response.content)
                 
             # Merge configurations
-            merged_zip_path = source_connection.merge_configurations(username, source_hostname, target_hostname)
+            merged_zip_path = source_connection.merge_configurations(username, source_hostname, target_hostname, merge_base_dir, source_extract_dir, target_extract_dir, merge_file_dir)
             
             # Upload merged configuration
             success = False
@@ -143,16 +141,3 @@ class BusinessController:
         except Exception as e:
             print(f"Error in update_configuration: {str(e)}")
             return False
-    
-    def printResponseError(response):
-        # Print all details about the response
-        print(f"Status Code: {response.status_code}")
-        print(f"Headers: {response.headers}")
-        print(f"Content: {response.content}")
-        print(f"Text: {response.text}")
-        print(f"JSON: {response.json() if response.headers['Content-Type'] == 'application/json' else 'Not a JSON response'}")
-        print(f"URL: {response.url}")
-        print(f"Elapsed Time: {response.elapsed}")
-        print(f"Request Headers: {response.request.headers}")
-        print(f"Request Method: {response.request.method}")
-        print(f"Request URL: {response.request.url}")
