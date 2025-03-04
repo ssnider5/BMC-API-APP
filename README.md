@@ -35,7 +35,7 @@
 1. **Download Zip File:**
    - At the top of the page, click the green "<> Code" button.
    - Select the option "Download ZIP" and choose your preferred location.
-   - Extract the files and run the file called `launch_app.vbs`.
+   - Extract the files and run the file called `launch_app.vbs` it will take a second with no output.
    - This will create a virtual environment and download all the dependencies for the program to run, without affecting your global installs.
 
 ## Usage
