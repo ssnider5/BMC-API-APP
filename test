@@ -1,108 +1,249 @@
 # -------------------------------
+# Excel Parser
+# -------------------------------
+import pandas as pd
+from openpyxl import load_workbook
+import numpy as np
+
+class ExcelParser:
+    def __init__(self):
+        self.current_data = None
+        self.current_headers = None
+        self.current_file = None
+    
+    def read_excel(self, file_path, sheet_name=0):
+        """
+        Reads an Excel file and returns headers and data.
+        
+        Args:
+            file_path (str): Path to the Excel file
+            sheet_name (str or int): Sheet name or index to read (default is first sheet)
+            
+        Returns:
+            tuple: (headers, data) where headers is a list of column names and 
+                  data is a list of tuples representing rows
+        """
+        self.current_file = file_path
+        
+        try:
+            # Read Excel file
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            
+            # Clean up data
+            df = self._clean_dataframe(df)
+            
+            # Store for later use
+            self.current_data = df
+            self.current_headers = df.columns.tolist()
+            
+            # Convert to format suitable for treeview
+            data_rows = [tuple(row) for row in df.values]
+            
+            return self.current_headers, data_rows
+        
+        except Exception as e:
+            print(f"Error reading Excel file: {str(e)}")
+            raise
+    
+    def _clean_dataframe(self, df):
+        """
+        Clean up the dataframe by:
+        1. Removing empty rows and columns
+        2. Converting NaN values to empty strings
+        3. Ensuring column names are strings and unique
+        """
+        # Drop completely empty rows and columns
+        df = df.dropna(how='all').dropna(axis=1, how='all')
+        
+        # Ensure column names are strings and there are no duplicates
+        df.columns = [f"Column {i}" if pd.isna(col) else str(col) for i, col in enumerate(df.columns)]
+        
+        # Handle duplicate column names by adding numbers
+        counts = {}
+        new_columns = []
+        for col in df.columns:
+            if col in counts:
+                counts[col] += 1
+                new_columns.append(f"{col}_{counts[col]}")
+            else:
+                counts[col] = 0
+                new_columns.append(col)
+        df.columns = new_columns
+        
+        # Replace NaN with empty strings
+        df = df.fillna('')
+        
+        return df
+    
+    def get_sheet_names(self, file_path):
+        """
+        Returns a list of sheet names in the Excel file
+        """
+        try:
+            workbook = load_workbook(file_path, read_only=True)
+            return workbook.sheetnames
+        except Exception as e:
+            print(f"Error getting sheet names: {str(e)}")
+            raise
+    
+    def get_json_data(self):
+        """
+        Returns the current data as a JSON-serializable list of dictionaries
+        """
+        if self.current_data is None:
+            return None
+        
+        # Convert DataFrame to list of dicts, handling non-serializable objects like numpy numbers
+        records = self.current_data.to_dict('records')
+        
+        # Ensure all values are JSON-serializable
+        for record in records:
+            for key, value in record.items():
+                if isinstance(value, np.integer):
+                    record[key] = int(value)
+                elif isinstance(value, np.floating):
+                    record[key] = float(value)
+                elif isinstance(value, np.ndarray):
+                    record[key] = value.tolist()
+        
+        return records
+    
+    def save_to_excel(self, file_path, data=None, headers=None):
+        """
+        Save data to an Excel file
+        
+        Args:
+            file_path (str): Path to save the Excel file
+            data (list or DataFrame): Data to save. If None, uses current_data
+            headers (list): Column headers. If None, uses current_headers
+        """
+        try:
+            if data is not None:
+                if isinstance(data, pd.DataFrame):
+                    df = data
+                else:
+                    # Convert list of tuples/lists to DataFrame
+                    df = pd.DataFrame(data, columns=headers or self.current_headers)
+            else:
+                df = self.current_data
+            
+            if df is not None:
+                df.to_excel(file_path, index=False)
+                return True
+            else:
+                raise ValueError("No data to save")
+        
+        except Exception as e:
+            print(f"Error saving to Excel: {str(e)}")
+            raise
+
+# -------------------------------
 # Create From Excel Panel
 # -------------------------------
-import tkinter as tk
-from tkinter import ttk, filedialog
-import os
-
 class CreateFromExcelPanel(tk.Frame):
-    def __init__(self, master, on_file_selected, **kwargs):
+    def __init__(self, master, mvcm_instance, excel_parser, **kwargs):
         super().__init__(master, **kwargs)
-        self.on_file_selected = on_file_selected
-        self.excel_file_path = None
+        self.mvcm = mvcm_instance
+        self.excel_parser = excel_parser
+        self.selected_file = None
         self.create_widgets()
 
     def create_widgets(self):
+        # Main container
         container = ttk.Frame(self)
         container.pack(fill=tk.BOTH, expand=True)
         
-        # File selection section
-        file_section = ttk.LabelFrame(container, text="Excel File Selection")
-        file_section.pack(fill=tk.X, padx=10, pady=10)
+        # File selection frame
+        file_frame = ttk.Frame(container)
+        file_frame.pack(fill=tk.X, pady=(10, 20))
         
-        file_frame = ttk.Frame(file_section)
-        file_frame.pack(fill=tk.X, padx=10, pady=10)
-        
+        # File path display
         self.file_path_var = tk.StringVar()
-        file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50)
-        file_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.file_path_var.set("No file selected")
+        file_path_label = ttk.Label(file_frame, text="Excel File:")
+        file_path_label.pack(side=tk.LEFT, padx=5)
+        file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50, state='readonly')
+        file_path_entry.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         
-        browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_excel_file)
-        browse_button.pack(side=tk.RIGHT)
+        # Browse button
+        browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_file)
+        browse_button.pack(side=tk.LEFT, padx=5)
         
-        # Preview section (will be populated once file is selected)
-        preview_section = ttk.LabelFrame(container, text="Excel Preview")
-        preview_section.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Table frame
+        self.table_frame = ttk.Frame(container)
+        self.table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        self.preview_frame = ttk.Frame(preview_section)
-        self.preview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Initially empty message
+        self.empty_label = ttk.Label(self.table_frame, text="Select an Excel file to display data")
+        self.empty_label.pack(expand=True)
         
-        preview_message = ttk.Label(self.preview_frame, text="Select an Excel file to preview its content")
-        preview_message.pack(pady=20)
+        # Actions frame
+        actions_frame = ttk.Frame(container)
+        actions_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Action buttons
-        button_frame = ttk.Frame(container)
-        button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
-        load_button = ttk.Button(button_frame, text="Load Excel Data", command=self.load_excel_data)
-        load_button.pack(side=tk.RIGHT, padx=5)
-        
-        cancel_button = ttk.Button(button_frame, text="Cancel", command=lambda: self.master.destroy())
-        cancel_button.pack(side=tk.RIGHT, padx=5)
+        # Import button (initially disabled)
+        self.import_button = ttk.Button(actions_frame, text="Import Data", command=self.import_data, state='disabled')
+        self.import_button.pack(side=tk.RIGHT, padx=5)
 
-    def browse_excel_file(self):
-        """Open file dialog to select an Excel file"""
-        filetypes = [
-            ("Excel files", "*.xlsx;*.xls"),
-            ("All files", "*.*")
-        ]
-        
+    def browse_file(self):
         file_path = filedialog.askopenfilename(
             title="Select Excel File",
-            filetypes=filetypes
+            filetypes=[("Excel files", "*.xlsx *.xls")]
         )
         
         if file_path:
-            self.excel_file_path = file_path
+            self.selected_file = file_path
             self.file_path_var.set(file_path)
-            self.show_preview()
+            self.load_excel_preview()
     
-    def show_preview(self):
-        """Display a preview of the selected Excel file"""
-        # Clear previous preview
-        for widget in self.preview_frame.winfo_children():
+    def load_excel_preview(self):
+        # Clear existing table if any
+        for widget in self.table_frame.winfo_children():
             widget.destroy()
+        
+        try:
+            # Use the excel parser to read the file
+            headers, data = self.excel_parser.read_excel(self.selected_file)
             
-        if self.excel_file_path:
-            # Create a table to show preview of Excel data
-            preview_tree = ttk.Treeview(self.preview_frame)
-            preview_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            # Create new treeview for the data
+            self.data_tree = ttk.Treeview(self.table_frame, columns=headers, show='headings')
+            
+            # Set column headings
+            for header in headers:
+                self.data_tree.heading(header, text=header)
+                # Adjust column width based on content
+                self.data_tree.column(header, width=100)
+            
+            # Insert data rows
+            for row in data:
+                self.data_tree.insert("", tk.END, values=row)
             
             # Add scrollbars
-            vsb = ttk.Scrollbar(self.preview_frame, orient="vertical", command=preview_tree.yview)
-            vsb.pack(side=tk.RIGHT, fill=tk.Y)
-            hsb = ttk.Scrollbar(self.preview_frame, orient="horizontal", command=preview_tree.xview)
-            hsb.pack(side=tk.BOTTOM, fill=tk.X)
+            y_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.VERTICAL, command=self.data_tree.yview)
+            self.data_tree.configure(yscrollcommand=y_scrollbar.set)
             
-            preview_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            x_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.HORIZONTAL, command=self.data_tree.xview)
+            self.data_tree.configure(xscrollcommand=x_scrollbar.set)
             
-            # Set up columns - this will be populated by ExcelParser
-            preview_tree.configure(show="headings")
+            # Pack everything
+            self.data_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
             
-            # Display a message to indicate preview is ready
-            status_label = ttk.Label(self.preview_frame, text="Preview data will appear here")
-            status_label.pack(pady=20)
+            # Enable import button
+            self.import_button.config(state='normal')
             
-            # This is where you would call your ExcelParser to display a preview
-            # For now, we'll just display a placeholder message
-            status_label.config(text=f"Excel file selected: {os.path.basename(self.excel_file_path)}\nUse the Load button to process this file.")
+        except Exception as e:
+            error_label = ttk.Label(self.table_frame, text=f"Error loading Excel file: {str(e)}", foreground="red")
+            error_label.pack(expand=True)
+            self.import_button.config(state='disabled')
     
-    def load_excel_data(self):
-        """Load and process the selected Excel file"""
-        if self.excel_file_path:
-            # Call the callback function with the selected file path
-            self.on_file_selected(self.excel_file_path)
-        else:
-            # Show error if no file is selected
-            tk.messagebox.showerror("Error", "Please select an Excel file first.")
-            
+    def import_data(self):
+        # This method would be implemented to handle the actual import process
+        # For example, sending the data to an API or processing it further
+        try:
+            # Example implementation:
+            # result = self.mvcm.post("/import-excel-data", json=self.excel_parser.get_json_data())
+            messagebox.showinfo("Import Successful", "Data has been successfully imported!")
+        except Exception as e:
+            messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
