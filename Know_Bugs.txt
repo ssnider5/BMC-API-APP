@@ -1,0 +1,1 @@
+Error log won't be created for every error, will just crash instead.
