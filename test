@@ -17,6 +17,8 @@ class ActionPanel(tk.Frame):
         # Set default selected server to the first one
         self.selected_server = self.servers[0]
         self.current_panel_mode = "saved_configurations"  # Default panel mode
+        self.is_panel_expanded = True  # Track if side panel is expanded
+        self.side_panel_width = 200  # Default width of side panel when expanded
         self.create_widgets()
 
     def create_widgets(self):
@@ -59,9 +61,35 @@ class ActionPanel(tk.Frame):
         # ---------------------------
         # Side panel (runs the entire length below the banner)
         # ---------------------------
-        self.side_panel = ttk.Frame(main_container, width=200)
+        self.side_panel_container = ttk.Frame(main_container)
+        self.side_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        
+        self.side_panel = ttk.Frame(self.side_panel_container, width=self.side_panel_width)
         self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
         self.side_panel.pack_propagate(False)  # Don't shrink to fit content
+        
+        # Toggle button for collapsing/expanding side panel
+        self.toggle_frame = ttk.Frame(self.side_panel_container, width=20)
+        self.toggle_frame.pack(side=tk.LEFT, fill=tk.Y)
+        
+        # Configure toggle frame with dark grey background
+        toggle_style = ttk.Style()
+        toggle_style.configure("Toggle.TFrame", background="#444444")
+        self.toggle_frame.configure(style="Toggle.TFrame")
+        
+        # Add toggle button with arrow icon
+        self.toggle_button = tk.Button(
+            self.toggle_frame, 
+            text="◀", 
+            command=self.toggle_side_panel,
+            relief="flat", 
+            bd=0, 
+            bg="#444444", 
+            fg="white", 
+            activebackground="#555555", 
+            activeforeground="white"
+        )
+        self.toggle_button.pack(side=tk.TOP, pady=10)
         
         # Side panel style - dark grey background
         side_panel_style = ttk.Style()
@@ -347,3 +375,16 @@ class ActionPanel(tk.Frame):
                 messagebox.showerror("Error", error_msg)
         except Exception as e:
             print(f"Error in update_complete: {str(e)}")
+    
+    def toggle_side_panel(self):
+        """Toggle the side panel between collapsed and expanded states"""
+        if self.is_panel_expanded:
+            # Collapse the panel
+            self.side_panel.pack_forget()
+            self.toggle_button.config(text="▶")  # Change arrow direction
+            self.is_panel_expanded = False
+        else:
+            # Expand the panel
+            self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+            self.toggle_button.config(text="◀")  # Change arrow direction
+            self.is_panel_expanded = True
