@@ -119,3 +119,38 @@ class BusinessController:
         except Exception as e:
             print(f"Error in update_configuration: {str(e)}")
             return False
+        
+# -------------------------------
+# Excel Parser Class
+# -------------------------------
+class ExcelParser:
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.data = []
+        self.headers = []
+        self._parse()
+    
+    def _parse(self):
+        try:
+            import pandas as pd
+            # Read Excel file
+            df = pd.read_excel(self.file_path)
+            
+            # Convert to list of dictionaries
+            self.data = df.to_dict('records')
+            
+            # Get headers
+            self.headers = list(df.columns)
+        except ImportError:
+            # Fallback if pandas is not available
+            try:
+                print("Pandas not working")
+            except ImportError:
+                # If both pandas and openpyxl are not available
+                raise Exception("Required libraries (pandas or openpyxl) not found")
+    
+    def get_data(self):
+        return self.data
+    
+    def get_headers(self):
+        return self.headers

@@ -345,13 +345,17 @@ class ActionPanel(tk.Frame):
         self.target_hostname = None
         self.current_action = None
         self.action_buttons = {}  # To store references to action buttons
+        self.side_panel_buttons = {}  # To store references to side panel buttons
         # Set default selected server to the first one
         self.selected_server = self.servers[0]
+        self.current_panel_mode = "saved_configurations"  # Default panel mode
+        self.is_panel_expanded = True  # Track if side panel is expanded
+        self.side_panel_width = 200  # Default width of side panel when expanded
         self.create_widgets()
 
     def create_widgets(self):
         # ---------------------------
-        # Banner: Program name and action buttons
+        # Banner: Program name and new action buttons
         # ---------------------------
         banner_frame = ttk.Frame(self)
         banner_frame.pack(fill=tk.X, padx=5, pady=10)  # Increased padding makes banner bigger
@@ -360,16 +364,16 @@ class ActionPanel(tk.Frame):
         program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 14, 'bold'))
         program_label.pack(side=tk.LEFT, padx=(5, 10))
 
-        # Vertical Seperator
+        # Vertical Separator
         separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
         separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         
-        # Action buttons
-        options = ["Download", "Upload", "Restore", "Create", "Update"]
+        # New action buttons in the banner
+        options = ["Saved Configurations", "CCS Server"]
         for option in options:
             btn = tk.Button(banner_frame,
                             text=option,
-                            command=lambda opt=option: self.show_panel(opt),
+                            command=lambda opt=option: self.switch_panel_mode(opt),
                             relief="flat", bd=0, padx=10, pady=5)
             btn.pack(side=tk.LEFT, padx=5)
             self.action_buttons[option] = btn
@@ -378,24 +382,138 @@ class ActionPanel(tk.Frame):
         # Orange line underneath the banner
         # ---------------------------
         orange_line = tk.Frame(self, bg="orange", height=2)
-        orange_line.pack(fill=tk.X, padx=0, pady=(0, 10))
+        orange_line.pack(fill=tk.X, padx=0, pady=(0, 0))
         
+        # ---------------------------
+        # Main content container to hold side panel and content area
+        # ---------------------------
+        main_container = ttk.Frame(self)
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # ---------------------------
+        # Side panel (runs the entire length below the banner)
+        # ---------------------------
+        self.side_panel_container = ttk.Frame(main_container)
+        self.side_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        
+        self.side_panel = ttk.Frame(self.side_panel_container, width=self.side_panel_width)
+        self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        self.side_panel.pack_propagate(False)  # Don't shrink to fit content
+        
+        # Toggle button for collapsing/expanding side panel
+        self.toggle_frame = ttk.Frame(self.side_panel_container, width=20)
+        self.toggle_frame.pack(side=tk.LEFT, fill=tk.Y)
+        
+        # Configure toggle frame with dark grey background
+        toggle_style = ttk.Style()
+        toggle_style.configure("Toggle.TFrame", background="#444444")
+        self.toggle_frame.configure(style="Toggle.TFrame")
+        
+        # Add toggle button with arrow icon
+        self.toggle_button = tk.Button(
+            self.toggle_frame, 
+            text="◀", 
+            command=self.toggle_side_panel,
+            relief="flat", 
+            bd=0, 
+            bg="#444444", 
+            fg="white", 
+            activebackground="#555555", 
+            activeforeground="white"
+        )
+        self.toggle_button.pack(side=tk.TOP, pady=10)
+        
+        # Side panel style - dark grey background
+        side_panel_style = ttk.Style()
+        side_panel_style.configure("SidePanel.TFrame", background="#444444")
+        self.side_panel.configure(style="SidePanel.TFrame")
+        
+        # ---------------------------
+        # Content area (right of side panel)
+        # ---------------------------
+        self.content_area = ttk.Frame(main_container)
+        self.content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # ---------------------------
+        # Initialize both panel modes but only show the default one
+        # ---------------------------
+        self.create_saved_configs_panel()
+        self.create_ccs_server_panel()
+        self.switch_panel_mode("Saved Configurations")  # Start with saved configurations
+        
+    def create_saved_configs_panel(self):
+        # Clear any existing content in the side panel
+        for widget in self.side_panel.winfo_children():
+            widget.destroy()
+        
+        # Create buttons for saved configurations in the side panel
+        options = ["Download", "Upload", "Restore", "Create", "Update"]
+        for option in options:
+            btn = tk.Button(self.side_panel,
+                           text=option,
+                           command=lambda opt=option: self.show_panel(opt),
+                           relief="flat", bd=0, padx=10, pady=10,
+                           bg="#444444", fg="white", activebackground="#555555", activeforeground="white",
+                           width=20, anchor="w")
+            btn.pack(fill=tk.X, pady=1)
+            self.side_panel_buttons[option] = btn
+            
+    def create_ccs_server_panel(self):
+        # Clear any existing content in the side panel
+        for widget in self.side_panel.winfo_children():
+            widget.destroy()
+        
+        # Create buttons for saved configurations in the side panel
+        options = ["Create from Excel"]
+        for option in options:
+            btn = tk.Button(self.side_panel,
+                           text=option,
+                           command=lambda opt=option: self.show_panel(opt),
+                           relief="flat", bd=0, padx=10, pady=10,
+                           bg="#444444", fg="white", activebackground="#555555", activeforeground="white",
+                           width=20, anchor="w")
+            btn.pack(fill=tk.X, pady=1)
+            self.side_panel_buttons[option] = btn
+            
+    def switch_panel_mode(self, mode):
+        # Update button colors in banner
+        for act, button in self.action_buttons.items():
+            if act == mode:
+                button.config(bg="orange", activebackground="orange", fg="white")
+            else:
+                button.config(bg="SystemButtonFace", activebackground="SystemButtonFace", fg="black")
+        
+        # Clear any existing content in the content area
+        for widget in self.content_area.winfo_children():
+            widget.destroy()
+            
+        # Update the side panel and content area based on the selected mode
+        if mode == "Saved Configurations":
+            self.current_panel_mode = "saved_configurations"
+            self.create_saved_configs_panel()
+            self.setup_saved_configs_content()
+        elif mode == "CCS Server":
+            self.current_panel_mode = "ccs_server"
+            self.create_ccs_server_panel()
+            self.setup_ccs_server_content()
+            
+    def setup_saved_configs_content(self):
         # ---------------------------
         # Title and Current Server Label (centered)
         # ---------------------------
-        title_label = ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold'))
+        title_label = ttk.Label(self.content_area, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold'))
         title_label.pack(pady=(10, 5))
         self.current_server_label = ttk.Label(
-            self,
+            self.content_area,
             text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
             font=('TkDefaultFont', 10)
         )
         self.current_server_label.pack(pady=(0, 10))
 
         # ---------------------------
-        # Server Drop-Down Button (aligned to the left under the banner)
+        # Server Drop-Down Button (aligned to the left)
         # ---------------------------
-        server_dropdown_frame = ttk.Frame(self)
+        server_dropdown_frame = ttk.Frame(self.content_area)
         server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
         self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
         self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
@@ -409,14 +527,57 @@ class ActionPanel(tk.Frame):
         # ---------------------------
         # Container for dynamic panels and action button
         # ---------------------------
-        self.panel_container = ttk.Frame(self)
+        self.panel_container = ttk.Frame(self.content_area)
         self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.button_frame = ttk.Frame(self)
+        self.button_frame = ttk.Frame(self.content_area)
         self.button_frame.pack(pady=10)
+        
+    def setup_ccs_server_content(self):
+        # ---------------------------
+        # Title for CCS Server management
+        # ---------------------------
+        title_label = ttk.Label(self.content_area, text="Manage CCS Servers", font=('TkDefaultFont', 12, 'bold'))
+        title_label.pack(pady=(10, 5))
+        self.current_server_label = ttk.Label(
+            self.content_area,
+            text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
+            font=('TkDefaultFont', 10)
+        )
+        self.current_server_label.pack(pady=(0, 10))
+
+        # ---------------------------
+        # Server Drop-Down Button (aligned to the left)
+        # ---------------------------
+        server_dropdown_frame = ttk.Frame(self.content_area)
+        server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
+        self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
+        self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
+        self.servers_mb["menu"] = self.servers_mb.menu
+        for server in self.servers:
+            env, hostname = server
+            label = f"{env} ({hostname})"
+            self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
+        self.servers_mb.pack(side=None)
+        
+        # ---------------------------
+        # Container for dynamic panels and action button
+        # ---------------------------
+        self.panel_container = ttk.Frame(self.content_area)
+        self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.button_frame = ttk.Frame(self.content_area)
+        self.button_frame.pack(pady=10)
+        
+        # Note: The CCS server content area is similar to saved configurations
+        # but with a different title. You can add more specific content as needed.
 
     def set_server(self, server):
         self.selected_server = server
-        self.current_server_label.config(text=f"Current Server: {server[0]} ({server[1]})")
+        # Update the server label in the current content area
+        for widget in self.content_area.winfo_children():
+            if isinstance(widget, ttk.Label) and hasattr(widget, 'cget') and widget.cget('text').startswith("Current Server:"):
+                widget.config(text=f"Current Server: {server[0]} ({server[1]})")
+                break
+        
         self.controller.connect(server[1], self.username, self.password)
         new_configs = self.controller.get_saved_configurations()
         self.saved_configs = new_configs
@@ -428,12 +589,12 @@ class ActionPanel(tk.Frame):
 
     def show_panel(self, action):
         self.current_action = action
-        # Update button colors: set the active button to orange, others to default
-        for act, button in self.action_buttons.items():
+        # Update button colors in side panel: set the active button to orange, others to default
+        for act, button in self.side_panel_buttons.items():
             if act == action:
-                button.config(bg="orange", activebackground="orange", fg="white")
+                button.config(bg="#FF8C00", activebackground="#FF8C00", fg="white")
             else:
-                button.config(bg="SystemButtonFace", activebackground="SystemButtonFace", fg="black")
+                button.config(bg="#444444", activebackground="#555555", fg="white")
 
         # Clear any existing panel from the panel container and button frame
         for widget in self.panel_container.winfo_children():
@@ -512,7 +673,7 @@ class ActionPanel(tk.Frame):
 
     def process_update(self):
         # Disable all buttons during update
-        for button in self.action_buttons.values():
+        for button in self.side_panel_buttons.values():
             button.config(state=tk.DISABLED)
         
         # Create and show loading dialog
@@ -543,7 +704,7 @@ class ActionPanel(tk.Frame):
     def update_complete(self, loading_dialog, success, error_message=None):
         try:
             # Re-enable all buttons
-            for button in self.action_buttons.values():
+            for button in self.side_panel_buttons.values():
                 button.config(state=tk.NORMAL)
             
             # Destroy the loading dialog
@@ -558,6 +719,19 @@ class ActionPanel(tk.Frame):
                 messagebox.showerror("Error", error_msg)
         except Exception as e:
             print(f"Error in update_complete: {str(e)}")
+    
+    def toggle_side_panel(self):
+        """Toggle the side panel between collapsed and expanded states"""
+        if self.is_panel_expanded:
+            # Collapse the panel
+            self.side_panel.pack_forget()
+            self.toggle_button.config(text="▶")  # Change arrow direction
+            self.is_panel_expanded = False
+        else:
+            # Expand the panel
+            self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+            self.toggle_button.config(text="◀")  # Change arrow direction
+            self.is_panel_expanded = True
 
 # ------------------------------
 # LOADING SCREEN
