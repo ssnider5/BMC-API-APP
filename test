@@ -1,1 +1,301 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import threading
+import os
 
+# Note: DownloadRestorePanel, UploadPanel, CreatePanel, UpdatePanel, and LoadingDialog 
+# are assumed to be defined elsewhere
+
+class ActionPanel(tk.Frame):
+    def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
+        super().__init__(master, **kwargs)
+        self.controller = controller
+        self.username = username
+        self.password = password
+        self.saved_configs = saved_configs
+        self.servers = servers  # List of tuples: (Environment, Hostname)
+        self.selected_config_name = None
+        self.selected_file = None
+        self.create_data = None
+        self.source_hostname = None
+        self.target_hostname = None
+        self.current_action = None
+        self.action_buttons = {}  # To store references to the original banner buttons
+        self.side_panel_visible = False  # Track visibility of the side panel
+
+        # Set default selected server to the first one
+        self.selected_server = self.servers[0]
+        self.create_widgets()
+
+    def create_widgets(self):
+        # ---------------------------
+        # Banner: Program name and action buttons (including new ones)
+        # ---------------------------
+        banner_frame = ttk.Frame(self)
+        banner_frame.pack(fill=tk.X, padx=5, pady=10)
+        
+        # Program name label
+        program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 14, 'bold'))
+        program_label.pack(side=tk.LEFT, padx=(5, 10))
+
+        # Vertical separator
+        separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
+        separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        
+        # Original action buttons (Download, Upload, etc.)
+        options = ["Download", "Upload", "Restore", "Create", "Update"]
+        for option in options:
+            btn = tk.Button(banner_frame,
+                            text=option,
+                            command=lambda opt=option: self.show_panel(opt),
+                            padx=10, pady=5)
+            btn.pack(side=tk.LEFT, padx=5)
+            self.action_buttons[option] = btn
+        
+        # New banner buttons: Saved Configurations and CCS Server
+        saved_configs_btn = tk.Button(banner_frame,
+                                      text="Saved Configurations",
+                                      command=self.show_saved_configurations,
+                                      padx=10, pady=5)
+        saved_configs_btn.pack(side=tk.LEFT, padx=5)
+        
+        ccs_server_btn = tk.Button(banner_frame,
+                                   text="CCS Server",
+                                   command=self.show_ccs_server,
+                                   padx=10, pady=5)
+        ccs_server_btn.pack(side=tk.LEFT, padx=5)
+        
+        # ---------------------------
+        # Orange line underneath the banner
+        # ---------------------------
+        orange_line = tk.Frame(self, bg="orange", height=2)
+        orange_line.pack(fill=tk.X, pady=(0, 10))
+        
+        # ---------------------------
+        # Title and Current Server Label (centered)
+        # ---------------------------
+        self.title_label = ttk.Label(self, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold'))
+        self.title_label.pack(pady=(10, 5))
+        self.current_server_label = ttk.Label(
+            self,
+            text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
+            font=('TkDefaultFont', 10)
+        )
+        self.current_server_label.pack(pady=(0, 10))
+
+        # ---------------------------
+        # Server Drop-Down Button (aligned to the left under the banner)
+        # ---------------------------
+        server_dropdown_frame = ttk.Frame(self)
+        server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
+        self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
+        self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
+        self.servers_mb["menu"] = self.servers_mb.menu
+        for server in self.servers:
+            env, hostname = server
+            label = f"{env} ({hostname})"
+            self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
+        self.servers_mb.pack(side=tk.LEFT)
+        
+        # ---------------------------
+        # Main content area: a container for a side panel and the main panel
+        # ---------------------------
+        self.content_frame = ttk.Frame(self)
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Side Panel (initially not packed, will be shown when needed)
+        self.side_panel = tk.Frame(self.content_frame, bg="darkgrey")
+        # Main Panel Frame will hold your dynamic panel content and process button
+        self.main_panel_frame = ttk.Frame(self.content_frame)
+        self.main_panel_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Panel container for dynamic content and button frame inside main panel
+        self.panel_container = ttk.Frame(self.main_panel_frame)
+        self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.button_frame = ttk.Frame(self.main_panel_frame)
+        self.button_frame.pack(pady=10)
+        
+    def set_server(self, server):
+        self.selected_server = server
+        self.current_server_label.config(text=f"Current Server: {server[0]} ({server[1]})")
+        self.controller.connect(server[1], self.username, self.password)
+        new_configs = self.controller.get_saved_configurations()
+        self.saved_configs = new_configs
+        print(f"Connected to new server: {server[0]} ({server[1]})")
+        for widget in self.panel_container.winfo_children():
+            if hasattr(widget, 'refresh_configs'):
+                widget.saved_configs = new_configs
+                widget.refresh_configs()
+
+    def toggle_side_panel(self):
+        if self.side_panel_visible:
+            self.side_panel.pack_forget()
+            self.side_panel_visible = False
+        else:
+            self.side_panel.pack(side=tk.LEFT, fill=tk.Y)
+            self.side_panel_visible = True
+
+    def show_side_panel(self):
+        # Ensure the side panel is visible
+        if not self.side_panel_visible:
+            self.side_panel.pack(side=tk.LEFT, fill=tk.Y)
+            self.side_panel_visible = True
+        # Clear any previous widgets in the side panel
+        for widget in self.side_panel.winfo_children():
+            widget.destroy()
+        # Add a toggle (collapse) button at the top of the side panel
+        toggle_btn = tk.Button(self.side_panel, text="<<", command=self.toggle_side_panel,
+                               bg="darkgrey", fg="white", relief="flat", bd=0)
+        toggle_btn.pack(pady=5, padx=5, anchor="e")
+
+    def show_saved_configurations(self):
+        # Update the title and leave the rest of the main panel intact
+        self.title_label.config(text="Manage Saved Configurations")
+        # Show the side panel and populate it with the saved configuration buttons
+        self.show_side_panel()
+        for option in ["Download", "Upload", "Restore", "Create", "Update"]:
+            btn = tk.Button(self.side_panel,
+                            text=option,
+                            command=lambda opt=option: self.show_panel(opt),
+                            bg="darkgrey", fg="white", relief="flat", bd=0, padx=10, pady=5)
+            btn.pack(fill=tk.X, padx=5, pady=2)
+        # Optionally clear main panel dynamic content
+        self.clear_main_panel()
+
+    def show_ccs_server(self):
+        # Change the title to indicate CCS Server management
+        self.title_label.config(text="Manage CCS Servers")
+        # Show the side panel and add a placeholder area for additional CCS Server buttons
+        self.show_side_panel()
+        placeholder_label = tk.Label(self.side_panel, text="CCS Server Options", bg="darkgrey", fg="white")
+        placeholder_label.pack(pady=5, padx=5)
+        # A frame where you can later add additional buttons for CCS Server functions
+        self.ccs_server_buttons_frame = tk.Frame(self.side_panel, bg="darkgrey")
+        self.ccs_server_buttons_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Optionally clear main panel dynamic content
+        self.clear_main_panel()
+
+    def clear_main_panel(self):
+        # Remove any existing dynamic widgets from the main panel
+        for widget in self.panel_container.winfo_children():
+            widget.destroy()
+        for widget in self.button_frame.winfo_children():
+            widget.destroy()
+
+    def show_panel(self, action):
+        self.current_action = action
+        # Clear current main panel content
+        self.clear_main_panel()
+
+        if action in ['Download', 'Restore']:
+            panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
+                                         self.username, self.controller.mvcm, self.on_config_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+            panel.refresh_configs()
+        elif action == 'Upload':
+            panel = UploadPanel(self.panel_container, self.on_file_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == 'Create':
+            panel = CreatePanel(self.panel_container, self.on_create)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == 'Update':
+            panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+
+        # Add the process button at the bottom of the main panel
+        process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
+        process_button.pack(pady=10)
+        
+        self.master.bind('<Return>', lambda e: self.process_action())
+
+    def on_config_select(self, config_name):
+        self.selected_config_name = config_name
+
+    def on_file_select(self, file_path):
+        if file_path and os.path.exists(file_path):
+            self.selected_file = file_path
+
+    def on_create(self, name, description):
+        if name:
+            self.create_data = (name, description)
+
+    def on_update_select(self, source_hostname, target_hostname):
+        self.source_hostname = source_hostname
+        self.target_hostname = target_hostname
+
+    def process_action(self):
+        action = self.current_action
+        if action == 'Download' and self.selected_config_name:
+            dl_location = None
+            for widget in self.panel_container.winfo_children():
+                if hasattr(widget, 'download_location'):
+                    dl_location = widget.download_location.get()
+                    break
+            if not dl_location:
+                dl_location = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip"
+            success = self.controller.download_configuration(self.selected_config_name, dl_location)
+            if success:
+                print(f"Successfully downloaded the ZIP file to {dl_location}")
+            else:
+                print("Download failed.")
+        elif action == 'Restore' and self.selected_config_name:
+            success = self.controller.restore_configuration(self.selected_config_name)
+            print("Restore successful!" if success else "Restore failed.")
+        elif action == 'Upload' and self.selected_file:
+            success = self.controller.upload_configuration(self.selected_file)
+            print("Upload successful!" if success else "Upload failed.")
+        elif action == 'Create' and self.create_data:
+            name, description = self.create_data
+            if name:
+                success = self.controller.create_configuration(name, description)
+                print("Configuration created successfully!" if success else "Creation failed.")
+            else:
+                print("Name is required for creation.")
+        elif action == 'Update' and self.source_hostname and self.target_hostname:
+            self.process_update()
+        else:
+            print("Required selections are missing for the chosen action.")
+
+    def process_update(self):
+        # Disable original action buttons during update
+        for button in self.action_buttons.values():
+            button.config(state=tk.DISABLED)
+        
+        # Create and show a loading dialog
+        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
+        loading_dialog.start()
+        
+        def update_thread():
+            success = False
+            error_message = None
+            try:
+                success = self.controller.update_configuration(
+                    self.source_hostname,
+                    self.target_hostname,
+                    self.username,
+                    self.password
+                )
+            except Exception as e:
+                error_message = str(e)
+            finally:
+                if loading_dialog.winfo_exists():
+                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
+        
+        thread = threading.Thread(target=update_thread, daemon=True)
+        thread.start()
+
+    def update_complete(self, loading_dialog, success, error_message=None):
+        try:
+            for button in self.action_buttons.values():
+                button.config(state=tk.NORMAL)
+            
+            if loading_dialog.winfo_exists():
+                loading_dialog.destroy()
+            
+            if success:
+                messagebox.showinfo("Success", "Update process completed successfully!")
+            else:
+                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            print(f"Error in update_complete: {str(e)}")
