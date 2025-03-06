@@ -382,7 +382,7 @@ class ActionPanel(tk.Frame):
         # Orange line underneath the banner
         # ---------------------------
         orange_line = tk.Frame(self, bg="orange", height=2)
-        orange_line.pack(fill=tk.X, padx=0, pady=(0, 0))
+        orange_line.pack(fill=tk.X, padx=0, pady=(0, 10))
         
         # ---------------------------
         # Main content container to hold side panel and content area
@@ -459,21 +459,9 @@ class ActionPanel(tk.Frame):
             self.side_panel_buttons[option] = btn
             
     def create_ccs_server_panel(self):
-        # Clear any existing content in the side panel
-        for widget in self.side_panel.winfo_children():
-            widget.destroy()
-        
-        # Create buttons for saved configurations in the side panel
-        options = ["Create from Excel"]
-        for option in options:
-            btn = tk.Button(self.side_panel,
-                           text=option,
-                           command=lambda opt=option: self.show_panel(opt),
-                           relief="flat", bd=0, padx=10, pady=10,
-                           bg="#444444", fg="white", activebackground="#555555", activeforeground="white",
-                           width=20, anchor="w")
-            btn.pack(fill=tk.X, pady=1)
-            self.side_panel_buttons[option] = btn
+        # This method will be used to create the CCS server side panel buttons
+        # For now, it's empty as per requirements, but you can add buttons here later
+        pass
             
     def switch_panel_mode(self, mode):
         # Update button colors in banner
