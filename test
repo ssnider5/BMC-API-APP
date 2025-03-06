@@ -1,3 +1,36 @@
+# -------------------------------
+# Upload Panel
+# -------------------------------
+class UploadPanel(tk.Frame):
+    def __init__(self, master, on_file_selected, **kwargs):
+        super().__init__(master, **kwargs)
+        self.on_file_selected = on_file_selected
+        self.create_widgets()
+
+    def create_widgets(self):
+        upload_frame = ttk.Frame(self)
+        upload_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+        file_frame = ttk.Frame(upload_frame)
+        file_frame.pack(fill=tk.X, pady=20)
+        ttk.Label(file_frame, text="Selected File:").pack(side=tk.LEFT, padx=(0, 10))
+        self.file_path = tk.StringVar()
+        self.file_entry = ttk.Entry(file_frame, textvariable=self.file_path, width=60)
+        self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_file)
+        browse_button.pack(side=tk.LEFT)
+        self.file_path.trace('w', self.on_file_path_change)
+
+    def browse_file(self):
+        filename = filedialog.askopenfilename(
+            title="Select a ZIP file", filetypes=[("ZIP files", "*.zip")])
+        if filename:
+            self.file_path.set(filename)
+            self.on_file_selected(filename)  # Call callback immediately when file is selected
+
+    def on_file_path_change(self, *args):
+        if self.file_path.get():
+            self.on_file_selected(self.file_path.get())  # Call callback when path changes
+
 class ActionPanel(tk.Frame):
     def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
         super().__init__(master, **kwargs)
