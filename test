@@ -1,261 +1,768 @@
+import tkinter as tk
+from tkinter import ttk, filedialog
+import os
+import mvcm
+from business import BusinessController
+import threading
+from tkinter import messagebox
+from tkinter import PhotoImage
+
 # -------------------------------
-# Excel Upload Panel
+# Server Selection Panel – kept for reference
 # -------------------------------
-class ExcelUploadPanel(tk.Frame):
-    def __init__(self, master, on_excel_selected, **kwargs):
+class ServerSelectionPanel(tk.Frame):
+    def __init__(self, master, on_select, **kwargs):
         super().__init__(master, **kwargs)
-        self.on_excel_selected = on_excel_selected
-        self.excel_data = None
-        self.headers = []
+        self.on_select = on_select
+        self.servers = []
         self.create_widgets()
 
     def create_widgets(self):
-        # Main container frame
-        main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True, pady=20)
-        
-        # File selection frame
-        file_frame = ttk.Frame(main_frame)
-        file_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        ttk.Label(file_frame, text="Select Excel File:").pack(side=tk.LEFT, padx=(0, 10))
-        
+        self.tree = ttk.Treeview(self, columns=("Environment", "Hostname"), show='headings')
+        self.tree.heading("Environment", text="Environment")
+        self.tree.heading("Hostname", text="Hostname")
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.select_button = tk.Button(self, text="Select Row", command=self.select_row)
+        self.select_button.pack(pady=5)
+
+        self.selected_label = tk.Label(self, text="Selected Hostname: None")
+        self.selected_label.pack(pady=5)
+
+        self.master.bind('<Return>', lambda e: self.select_row())
+        self.master.bind('<KeyPress>', self.handle_keypress)
+
+    def handle_keypress(self, event):
+        if event.char.isdigit():
+            index = int(event.char)
+            if index == 0:
+                return
+            children = self.tree.get_children()
+            if 1 <= index <= len(children):
+                self.tree.selection_set(children[index-1])
+                self.tree.focus(children[index-1])
+
+    def add_row(self, environment, hostname):
+        row_num = len(self.tree.get_children()) + 1
+        labeled_env = f"{row_num}: {environment}"
+        self.tree.insert("", "end", values=(labeled_env, hostname))
+        self.servers.append((environment, hostname))
+
+    def select_row(self):
+        selected = self.tree.selection()
+        if selected:
+            item = self.tree.item(selected[0])
+            hostname = item['values'][1]
+            self.selected_label.config(text=f"Selected Hostname: {hostname}")
+            self.on_select(hostname, self.servers)
+
+# -------------------------------
+# Login Panel – appears immediately
+# -------------------------------
+class LoginPanel(tk.Frame):
+    def __init__(self, master, hostname, on_login, **kwargs):
+        super().__init__(master, **kwargs)
+        self.hostname = hostname
+        self.on_login = on_login
+        self.create_widgets()
+
+    def create_widgets(self):
+        tk.Label(self, text="Username").pack(pady=5)
+        self.username_entry = tk.Entry(self)
+        self.username_entry.pack(pady=5)
+
+        tk.Label(self, text="Password").pack(pady=5)
+        self.password_entry = tk.Entry(self, show="*")
+        self.password_entry.pack(pady=5)
+
+        self.login_button = tk.Button(self, text="Login", command=self.login)
+        self.login_button.pack(pady=10)
+
+        self.master.bind('<Return>', lambda e: self.login())
+
+    def login(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        self.on_login(self.hostname, username, password)
+
+# -------------------------------
+# Download/Restore Panel
+# -------------------------------
+class DownloadRestorePanel(tk.Frame):
+    def __init__(self, master, action, saved_configs, username, mvcm_instance, on_select, **kwargs):
+        super().__init__(master, **kwargs)
+        self.action = action
+        self.saved_configs = saved_configs
+        self.username = username
+        self.mvcm = mvcm_instance
+        self.on_select = on_select
+        self.create_widgets()
+
+    def create_widgets(self):
+        container = ttk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+        refresh_frame = ttk.Frame(container)
+        refresh_frame.pack(fill=tk.X, pady=(0, 10))
+        refresh_button = ttk.Button(refresh_frame, text="↻ Refresh", command=self.refresh_configs)
+        refresh_button.pack(side=tk.RIGHT, padx=5)
+        table_frame = ttk.Frame(container)
+        table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.config_tree = ttk.Treeview(table_frame, 
+                                        columns=("Number", "Name", "Description", "Date", "User"), 
+                                        show='headings')
+        self.config_tree.heading("Number", text="#")
+        self.config_tree.heading("Name", text="Name")
+        self.config_tree.heading("Description", text="Description")
+        self.config_tree.heading("Date", text="Date")
+        self.config_tree.heading("User", text="User")
+        self.config_tree.column("Number", width=50)
+        self.config_tree.column("Name", width=200)
+        self.config_tree.column("Description", width=400)
+        self.config_tree.column("Date", width=100)
+        self.config_tree.column("User", width=100)
+        self.config_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.config_tree.yview)
+        self.config_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.populate_configs()
+        self.bind_all('<KeyPress>', self.handle_number_key)
+        self.config_tree.bind('<<TreeviewSelect>>', self.on_tree_select)
+
+    def refresh_configs(self):
+        try:
+            r = self.mvcm.get("/saved-configurations", "application/json")
+            if r.ok:
+                self.saved_configs = r.json()
+                for item in self.config_tree.get_children():
+                    self.config_tree.delete(item)
+                for idx, config in enumerate(self.saved_configs, 1):
+                    self.config_tree.insert("", tk.END, values=(
+                        str(idx),
+                        config['name'],
+                        config['description'],
+                        config['date'],
+                        config['user']
+                    ))
+                print("Configurations refreshed successfully!")
+            else:
+                print(f"Failed to refresh configurations. Status code: {r.status_code}")
+        except Exception as e:
+            print(f"Error refreshing configurations: {str(e)}")
+
+    def populate_configs(self):
+        if self.saved_configs:
+            for idx, config in enumerate(self.saved_configs, 1):
+                self.config_tree.insert("", tk.END, values=(
+                    str(idx),
+                    config['name'],
+                    config['description'],
+                    config['date'],
+                    config['user']
+                ))
+
+    def handle_number_key(self, event):
+        if event.char.isdigit():
+            index = int(event.char)
+            if 1 <= index <= len(self.saved_configs):
+                children = self.config_tree.get_children()
+                self.config_tree.selection_remove(self.config_tree.selection())
+                self.config_tree.selection_set(children[index-1])
+                self.config_tree.focus(children[index-1])
+                item = self.config_tree.item(children[index-1])
+                self.on_select(item['values'][1])
+
+    def on_tree_select(self, event):
+        selected = self.config_tree.selection()
+        if selected:
+            item = self.config_tree.item(selected[0])
+            self.on_select(item['values'][1])
+
+# -------------------------------
+# Upload Panel
+# -------------------------------
+class UploadPanel(tk.Frame):
+    def __init__(self, master, on_file_selected, **kwargs):
+        super().__init__(master, **kwargs)
+        self.on_file_selected = on_file_selected
+        self.create_widgets()
+
+    def create_widgets(self):
+        upload_frame = ttk.Frame(self)
+        upload_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+        file_frame = ttk.Frame(upload_frame)
+        file_frame.pack(fill=tk.X, pady=20)
+        ttk.Label(file_frame, text="Selected File:").pack(side=tk.LEFT, padx=(0, 10))
         self.file_path = tk.StringVar()
         self.file_entry = ttk.Entry(file_frame, textvariable=self.file_path, width=60)
         self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        
         browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_file)
         browse_button.pack(side=tk.LEFT)
-        
-        # Table container for displaying Excel data
-        table_container = ttk.LabelFrame(main_frame, text="Excel Content Preview")
-        table_container.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-
-        # Add a frame for the table with scrollbars
-        table_frame = ttk.Frame(table_container)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Create scrollbars
-        x_scrollbar = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL)
-        y_scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL)
-        
-        # Create Treeview widget for the table
-        self.table = ttk.Treeview(table_frame, 
-                                  xscrollcommand=x_scrollbar.set,
-                                  yscrollcommand=y_scrollbar.set)
-        
-        # Configure scrollbars
-        x_scrollbar.config(command=self.table.xview)
-        y_scrollbar.config(command=self.table.yview)
-        
-        # Grid layout for table and scrollbars
-        self.table.grid(row=0, column=0, sticky="nsew")
-        y_scrollbar.grid(row=0, column=1, sticky="ns")
-        x_scrollbar.grid(row=1, column=0, sticky="ew")
-        
-        # Configure grid weights
-        table_frame.grid_rowconfigure(0, weight=1)
-        table_frame.grid_columnconfigure(0, weight=1)
-        
-        # Configure initial table state
-        self.table["show"] = "headings"  # Hide the default empty first column
-
-        # Status label
-        self.status_var = tk.StringVar()
-        self.status_var.set("No file selected")
-        status_label = ttk.Label(main_frame, textvariable=self.status_var, foreground="gray")
-        status_label.pack(fill=tk.X, pady=(10, 0))
-        
-        # Set up the file path change callback
         self.file_path.trace('w', self.on_file_path_change)
-        
+
     def browse_file(self):
         filename = filedialog.askopenfilename(
-            title="Select an Excel file", 
-            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")])
+            title="Select a ZIP file", filetypes=[("ZIP files", "*.zip")])
         if filename:
             self.file_path.set(filename)
-            
+            self.on_file_selected(filename)
+
     def on_file_path_change(self, *args):
-        file_path = self.file_path.get()
-        if file_path and (file_path.endswith('.xlsx') or file_path.endswith('.xls')):
-            self.status_var.set(f"Loading {os.path.basename(file_path)}...")
-            self.after(100, lambda: self.parse_excel(file_path))
-        elif file_path:
-            self.status_var.set("Not a valid Excel file")
-    
-    def parse_excel(self, file_path):
-        try:
-            # Clear the existing table
-            for column in self.table["columns"]:
-                self.table.heading(column, text="")
-            self.table["columns"] = ()
-            for item in self.table.get_children():
-                self.table.delete(item)
-            
-            # Parse Excel file using ExcelParser class
-            parser = ExcelParser(file_path)
-            self.excel_data = parser.get_data()
-            self.headers = parser.get_headers()
-            
-            # Update the table with headers
-            self.table["columns"] = self.headers
-            
-            # Set column headings
-            for header in self.headers:
-                self.table.heading(header, text=header)
-                self.table.column(header, minwidth=100, width=150)
-            
-            # Insert data rows
-            for row in self.excel_data[:100]:  # Limit to 100 rows for performance
-                values = [row.get(header, "") for header in self.headers]
-                self.table.insert("", tk.END, values=values)
-            
-            # Call the callback with the file path
-            if self.on_excel_selected:
-                self.on_excel_selected(file_path, self.headers, self.excel_data)
-            
-            row_count = len(self.excel_data)
-            self.status_var.set(f"Loaded {os.path.basename(file_path)} - {row_count} rows, {len(self.headers)} columns")
-            
-        except Exception as e:
-            self.status_var.set(f"Error loading file: {str(e)}")
-            messagebox.showerror("Error", f"Failed to load Excel file: {str(e)}")
-
+        if self.file_path.get():
+            self.on_file_selected(self.file_path.get())
 
 # -------------------------------
-# Excel Parser Class
+# Create Panel
 # -------------------------------
-class ExcelParser:
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self.data = []
-        self.headers = []
-        self._parse()
-    
-    def _parse(self):
-        try:
-            import pandas as pd
-            # Read Excel file
-            df = pd.read_excel(self.file_path)
-            
-            # Convert to list of dictionaries
-            self.data = df.to_dict('records')
-            
-            # Get headers
-            self.headers = list(df.columns)
-        except ImportError:
-            # Fallback if pandas is not available
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(self.file_path, read_only=True)
-                sheet = wb.active
-                
-                # Get headers from first row
-                self.headers = [cell.value for cell in next(sheet.rows)]
-                
-                # Process data rows
-                for row in list(sheet.rows)[1:]:
-                    row_data = {}
-                    for i, cell in enumerate(row):
-                        if i < len(self.headers) and self.headers[i]:
-                            row_data[self.headers[i]] = cell.value
-                    self.data.append(row_data)
-            except ImportError:
-                # If both pandas and openpyxl are not available
-                raise Exception("Required libraries (pandas or openpyxl) not found")
-    
-    def get_data(self):
-        return self.data
-    
-    def get_headers(self):
-        return self.headers
+class CreatePanel(tk.Frame):
+    def __init__(self, master, on_create, **kwargs):
+        super().__init__(master, **kwargs)
+        self.on_create = on_create
+        self.create_widgets()
 
+    def create_widgets(self):
+        create_frame = ttk.Frame(self)
+        create_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+        name_frame = ttk.Frame(create_frame)
+        name_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(name_frame, text="Name:").pack(side=tk.LEFT, padx=(0, 10))
+        self.name_var = tk.StringVar()
+        name_entry = ttk.Entry(name_frame, textvariable=self.name_var, width=60)
+        name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        desc_frame = ttk.Frame(create_frame)
+        desc_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(desc_frame, text="Description:").pack(side=tk.LEFT, padx=(0, 10))
+        self.desc_var = tk.StringVar()
+        desc_entry = ttk.Entry(desc_frame, textvariable=self.desc_var, width=60)
+        desc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.name_var.trace('w', self.on_field_change)
+        self.desc_var.trace('w', self.on_field_change)
 
-# Update the ActionPanel class to handle the "Create from Excel" option
-def show_panel(self, action):
-    self.current_action = action
-    # Update button colors in side panel: set the active button to orange, others to default
-    for act, button in self.side_panel_buttons.items():
-        if act == action:
-            button.config(bg="#FF8C00", activebackground="#FF8C00", fg="white")
-        else:
-            button.config(bg="#444444", activebackground="#555555", fg="white")
+    def on_field_change(self, *args):
+        name = self.name_var.get()
+        description = self.desc_var.get()
+        if name:
+            self.on_create(name, description)
 
-    # Clear any existing panel from the panel container and button frame
-    for widget in self.panel_container.winfo_children():
-        widget.destroy()
-    for widget in self.button_frame.winfo_children():
-        widget.destroy()
+# -------------------------------
+# New Panel: CreateFromExcelPanel
+# -------------------------------
+class CreateFromExcelPanel(tk.Frame):
+    def __init__(self, master, on_create_from_excel, **kwargs):
+        super().__init__(master, **kwargs)
+        self.on_create_from_excel = on_create_from_excel
+        self.create_widgets()
 
-    if action in ['Download', 'Restore']:
-        panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
-                                    self.username, self.controller.mvcm, self.on_config_select)
-        panel.pack(fill=tk.BOTH, expand=True)
-        panel.refresh_configs()
-    elif action == 'Upload':
-        panel = UploadPanel(self.panel_container, self.on_file_select)
-        panel.pack(fill=tk.BOTH, expand=True)
-    elif action == 'Create':
-        panel = CreatePanel(self.panel_container, self.on_create)
-        panel.pack(fill=tk.BOTH, expand=True)
-    elif action == 'Update':
-        panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
-        panel.pack(fill=tk.BOTH, expand=True)
-    elif action == 'Create from Excel':
-        panel = ExcelUploadPanel(self.panel_container, self.on_excel_select)
-        panel.pack(fill=tk.BOTH, expand=True)
+    def create_widgets(self):
+        tk.Label(self, text="Select Excel File to Create Configuration:").pack(pady=5)
+        self.file_path = tk.StringVar()
+        file_entry = ttk.Entry(self, textvariable=self.file_path, width=60)
+        file_entry.pack(pady=5)
+        browse_button = tk.Button(self, text="Browse", command=self.browse_file)
+        browse_button.pack(pady=5)
+        create_button = tk.Button(self, text="Import from Excel", command=self.create_from_excel)
+        create_button.pack(pady=10)
 
-    # Add the process button
-    process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
-    process_button.pack(pady=10)
-    
-    self.master.bind('<Return>', lambda e: self.process_action())
-
-# Add the following methods to the ActionPanel class
-
-def on_excel_select(self, file_path, headers, data):
-    """Callback when an Excel file is selected and parsed."""
-    self.selected_excel_file = file_path
-    self.excel_headers = headers
-    self.excel_data = data
-    print(f"Excel file selected: {file_path}")
-    print(f"Headers: {headers[:5]}..." if len(headers) > 5 else f"Headers: {headers}")
-    print(f"Loaded {len(data)} rows of data")
-
-# Update the process_action method to handle 'Create from Excel'
-def process_action(self):
-    action = self.current_action
-    if action == 'Download' and self.selected_config_name:
-        # Existing code...
-    elif action == 'Restore' and self.selected_config_name:
-        # Existing code...
-    elif action == 'Upload' and self.selected_file:
-        # Existing code...
-    elif action == 'Create' and self.create_data:
-        # Existing code...
-    elif action == 'Update' and self.source_hostname and self.target_hostname:
-        # Existing code...
-    elif action == 'Create from Excel' and hasattr(self, 'selected_excel_file'):
-        self.process_create_from_excel()
-    else:
-        print("Required selections are missing for the chosen action.")
-
-def process_create_from_excel(self):
-    """Process the 'Create from Excel' action."""
-    try:
-        # Here you would implement the logic to process the Excel data
-        # This would typically involve calling a method on the controller
-        success = self.controller.create_from_excel(
-            self.selected_excel_file,
-            self.excel_headers,
-            self.excel_data
+    def browse_file(self):
+        filename = filedialog.askopenfilename(
+            title="Select Excel File",
+            filetypes=[("Excel files", "*.xlsx *.xls")]
         )
-        
-        if success:
-            messagebox.showinfo("Success", "Configuration created successfully from Excel data!")
+        if filename:
+            self.file_path.set(filename)
+
+    def create_from_excel(self):
+        if self.file_path.get():
+            self.on_create_from_excel(self.file_path.get())
         else:
-            messagebox.showerror("Error", "Failed to create configuration from Excel.")
-            
-    except Exception as e:
-        messagebox.showerror("Error", f"An error occurred: {str(e)}")
+            messagebox.showwarning("Warning", "Please select an Excel file.")
+
+# -------------------------------
+# Update Panel
+# -------------------------------
+class UpdatePanel(tk.Frame):
+    def __init__(self, master, servers, on_update, **kwargs):
+        super().__init__(master, **kwargs)
+        self.servers = servers
+        self.on_update = on_update
+        self.source_hostname = None
+        self.target_hostname = None
+        self.create_widgets()
+
+    def create_widgets(self):
+        container = ttk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+        source_frame = ttk.Frame(container)
+        source_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        target_frame = ttk.Frame(container)
+        target_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        ttk.Label(source_frame, text="Source (Server to copy)", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        ttk.Label(target_frame, text="Target (Server to update)", font=('TkDefaultFont', 10, 'bold')).pack(pady=5)
+        self.source_tree = ttk.Treeview(source_frame, columns=("Number", "Environment", "Hostname"), show='headings')
+        self.source_tree.heading("Number", text="#")
+        self.source_tree.heading("Environment", text="Environment")
+        self.source_tree.heading("Hostname", text="Hostname")
+        self.source_tree.column("Number", width=50)
+        self.source_tree.column("Environment", width=150)
+        self.source_tree.column("Hostname", width=300)
+        self.source_tree.pack(fill=tk.BOTH, expand=True)
+        self.target_tree = ttk.Treeview(target_frame, columns=("Number", "Environment", "Hostname"), show='headings')
+        self.target_tree.heading("Number", text="#")
+        self.target_tree.heading("Environment", text="Environment")
+        self.target_tree.heading("Hostname", text="Hostname")
+        self.target_tree.column("Number", width=50)
+        self.target_tree.column("Environment", width=150)
+        self.target_tree.column("Hostname", width=300)
+        self.target_tree.pack(fill=tk.BOTH, expand=True)
+        for idx, (env, hostname) in enumerate(self.servers, 1):
+            self.source_tree.insert("", tk.END, values=(str(idx), env, hostname))
+            self.target_tree.insert("", tk.END, values=(str(idx), env, hostname))
+        self.source_tree.bind('<<TreeviewSelect>>', self.on_source_select)
+        self.target_tree.bind('<<TreeviewSelect>>', self.on_target_select)
+        self.bind_all('<KeyPress>', self.handle_number_keys)
+
+    def on_source_select(self, event):
+        selected = self.source_tree.selection()
+        if selected:
+            item = self.source_tree.item(selected[0])
+            self.source_hostname = item['values'][2]
+            self.check_selection_status()
+
+    def on_target_select(self, event):
+        selected = self.target_tree.selection()
+        if selected:
+            item = self.target_tree.item(selected[0])
+            self.target_hostname = item['values'][2]
+            self.check_selection_status()
+
+    def handle_number_keys(self, event):
+        if event.char.isdigit():
+            index = int(event.char)
+            if index <= len(self.servers):
+                if event.state & 0x1:  # Shift pressed, select target
+                    children = self.target_tree.get_children()
+                    self.target_tree.selection_set(children[index-1])
+                    self.target_tree.focus(children[index-1])
+                    self.target_hostname = self.servers[index-1][1]
+                else:
+                    children = self.source_tree.get_children()
+                    self.source_tree.selection_set(children[index-1])
+                    self.source_tree.focus(children[index-1])
+                    self.source_hostname = self.servers[index-1][1]
+                self.check_selection_status()
+
+    def check_selection_status(self):
+        if self.source_hostname and self.target_hostname:
+            self.on_update(self.source_hostname, self.target_hostname)
+
+# -------------------------------
+# Action Panel – now features a banner with buttons,
+# displays the title and underneath it the current server info,
+# and refreshes the saved configurations when a new server is selected.
+# -------------------------------
+class ActionPanel(tk.Frame):
+    def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
+        super().__init__(master, **kwargs)
+        self.controller = controller
+        self.username = username
+        self.password = password
+        self.saved_configs = saved_configs
+        self.servers = servers  # List of tuples: (Environment, Hostname)
+        self.selected_config_name = None
+        self.selected_file = None
+        self.create_data = None
+        self.create_from_excel_file = None  # New attribute for Excel file
+        self.source_hostname = None
+        self.target_hostname = None
+        self.current_action = None
+        self.action_buttons = {}  # To store references to action buttons
+        self.side_panel_buttons = {}  # To store references to side panel buttons
+        self.selected_server = self.servers[0]
+        self.current_panel_mode = "saved_configurations"
+        self.is_panel_expanded = True
+        self.side_panel_width = 200
+        self.create_widgets()
+
+    def create_widgets(self):
+        # Banner
+        banner_frame = ttk.Frame(self)
+        banner_frame.pack(fill=tk.X, padx=5, pady=10)
+        program_label = tk.Label(banner_frame, text="bmc api", font=('TkDefaultFont', 14, 'bold'))
+        program_label.pack(side=tk.LEFT, padx=(5, 10))
+        separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
+        separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        options = ["Saved Configurations", "CCS Server"]
+        for option in options:
+            btn = tk.Button(banner_frame,
+                            text=option,
+                            command=lambda opt=option: self.switch_panel_mode(opt),
+                            relief="flat", bd=0, padx=10, pady=5)
+            btn.pack(side=tk.LEFT, padx=5)
+            self.action_buttons[option] = btn
+        orange_line = tk.Frame(self, bg="orange", height=2)
+        orange_line.pack(fill=tk.X, padx=0, pady=(0, 0))
+        main_container = ttk.Frame(self)
+        main_container.pack(fill=tk.BOTH, expand=True)
+        self.side_panel_container = ttk.Frame(main_container)
+        self.side_panel_container.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        self.side_panel = ttk.Frame(self.side_panel_container, width=self.side_panel_width)
+        self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+        self.side_panel.pack_propagate(False)
+        self.toggle_frame = ttk.Frame(self.side_panel_container, width=20)
+        self.toggle_frame.pack(side=tk.LEFT, fill=tk.Y)
+        toggle_style = ttk.Style()
+        toggle_style.configure("Toggle.TFrame", background="#444444")
+        self.toggle_frame.configure(style="Toggle.TFrame")
+        self.toggle_button = tk.Button(
+            self.toggle_frame, 
+            text="◀", 
+            command=self.toggle_side_panel,
+            relief="flat", 
+            bd=0, 
+            bg="#444444", 
+            fg="white", 
+            activebackground="#555555", 
+            activeforeground="white"
+        )
+        self.toggle_button.pack(side=tk.TOP, pady=10)
+        side_panel_style = ttk.Style()
+        side_panel_style.configure("SidePanel.TFrame", background="#444444")
+        self.side_panel.configure(style="SidePanel.TFrame")
+        self.content_area = ttk.Frame(main_container)
+        self.content_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.create_saved_configs_panel()
+        self.create_ccs_server_panel()
+        self.switch_panel_mode("Saved Configurations")
+
+    def create_saved_configs_panel(self):
+        for widget in self.side_panel.winfo_children():
+            widget.destroy()
+        options = ["Download", "Upload", "Restore", "Create", "Update"]
+        for option in options:
+            btn = tk.Button(self.side_panel,
+                           text=option,
+                           command=lambda opt=option: self.show_panel(opt),
+                           relief="flat", bd=0, padx=10, pady=10,
+                           bg="#444444", fg="white", activebackground="#555555", activeforeground="white",
+                           width=20, anchor="w")
+            btn.pack(fill=tk.X, pady=1)
+            self.side_panel_buttons[option] = btn
+
+    def create_ccs_server_panel(self):
+        for widget in self.side_panel.winfo_children():
+            widget.destroy()
+        options = ["Create from Excel"]
+        for option in options:
+            btn = tk.Button(self.side_panel,
+                           text=option,
+                           command=lambda opt=option: self.show_panel(opt),
+                           relief="flat", bd=0, padx=10, pady=10,
+                           bg="#444444", fg="white", activebackground="#555555", activeforeground="white",
+                           width=20, anchor="w")
+            btn.pack(fill=tk.X, pady=1)
+            self.side_panel_buttons[option] = btn
+
+    def switch_panel_mode(self, mode):
+        for act, button in self.action_buttons.items():
+            if act == mode:
+                button.config(bg="orange", activebackground="orange", fg="white")
+            else:
+                button.config(bg="SystemButtonFace", activebackground="SystemButtonFace", fg="black")
+        for widget in self.content_area.winfo_children():
+            widget.destroy()
+        if mode == "Saved Configurations":
+            self.current_panel_mode = "saved_configurations"
+            self.create_saved_configs_panel()
+            self.setup_saved_configs_content()
+        elif mode == "CCS Server":
+            self.current_panel_mode = "ccs_server"
+            self.create_ccs_server_panel()
+            self.setup_ccs_server_content()
+
+    def setup_saved_configs_content(self):
+        title_label = ttk.Label(self.content_area, text="Manage Saved Configurations", font=('TkDefaultFont', 12, 'bold'))
+        title_label.pack(pady=(10, 5))
+        self.current_server_label = ttk.Label(
+            self.content_area,
+            text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
+            font=('TkDefaultFont', 10)
+        )
+        self.current_server_label.pack(pady=(0, 10))
+        server_dropdown_frame = ttk.Frame(self.content_area)
+        server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
+        self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
+        self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
+        self.servers_mb["menu"] = self.servers_mb.menu
+        for server in self.servers:
+            env, hostname = server
+            label = f"{env} ({hostname})"
+            self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
+        self.servers_mb.pack(side=None)
+        self.panel_container = ttk.Frame(self.content_area)
+        self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.button_frame = ttk.Frame(self.content_area)
+        self.button_frame.pack(pady=10)
+
+    def setup_ccs_server_content(self):
+        title_label = ttk.Label(self.content_area, text="Manage CCS Servers", font=('TkDefaultFont', 12, 'bold'))
+        title_label.pack(pady=(10, 5))
+        self.current_server_label = ttk.Label(
+            self.content_area,
+            text=f"Current Server: {self.selected_server[0]} ({self.selected_server[1]})",
+            font=('TkDefaultFont', 10)
+        )
+        self.current_server_label.pack(pady=(0, 10))
+        server_dropdown_frame = ttk.Frame(self.content_area)
+        server_dropdown_frame.pack(fill=tk.X, padx=5, pady=(0, 10), anchor="w")
+        self.servers_mb = tk.Menubutton(server_dropdown_frame, text="Change Server ▼", relief="flat", bd=0)
+        self.servers_mb.menu = tk.Menu(self.servers_mb, tearoff=0)
+        self.servers_mb["menu"] = self.servers_mb.menu
+        for server in self.servers:
+            env, hostname = server
+            label = f"{env} ({hostname})"
+            self.servers_mb.menu.add_command(label=label, command=lambda s=server: self.set_server(s))
+        self.servers_mb.pack(side=None)
+        self.panel_container = ttk.Frame(self.content_area)
+        self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.button_frame = ttk.Frame(self.content_area)
+        self.button_frame.pack(pady=10)
+
+    def set_server(self, server):
+        self.selected_server = server
+        for widget in self.content_area.winfo_children():
+            if isinstance(widget, ttk.Label) and hasattr(widget, 'cget') and widget.cget('text').startswith("Current Server:"):
+                widget.config(text=f"Current Server: {server[0]} ({server[1]})")
+                break
+        self.controller.connect(server[1], self.username, self.password)
+        new_configs = self.controller.get_saved_configurations()
+        self.saved_configs = new_configs
+        print(f"Connected to new server: {server[0]} ({server[1]})")
+        for widget in self.panel_container.winfo_children():
+            if hasattr(widget, 'refresh_configs'):
+                widget.saved_configs = new_configs
+                widget.refresh_configs()
+
+    def show_panel(self, action):
+        self.current_action = action
+        for act, button in self.side_panel_buttons.items():
+            if act == action:
+                button.config(bg="#FF8C00", activebackground="#FF8C00", fg="white")
+            else:
+                button.config(bg="#444444", activebackground="#555555", fg="white")
+        for widget in self.panel_container.winfo_children():
+            widget.destroy()
+        for widget in self.button_frame.winfo_children():
+            widget.destroy()
+
+        if action in ['Download', 'Restore']:
+            panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
+                                        self.username, self.controller.mvcm, self.on_config_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+            panel.refresh_configs()
+        elif action == 'Upload':
+            panel = UploadPanel(self.panel_container, self.on_file_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == 'Create':
+            panel = CreatePanel(self.panel_container, self.on_create)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == 'Update':
+            panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == 'Create from Excel':
+            panel = CreateFromExcelPanel(self.panel_container, self.on_create_from_excel)
+            panel.pack(fill=tk.BOTH, expand=True)
+
+        process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
+        process_button.pack(pady=10)
+        
+        self.master.bind('<Return>', lambda e: self.process_action())
+
+    def on_config_select(self, config_name):
+        self.selected_config_name = config_name
+
+    def on_file_select(self, file_path):
+        if file_path and os.path.exists(file_path):
+            self.selected_file = file_path
+
+    def on_create(self, name, description):
+        if name:
+            self.create_data = (name, description)
+    
+    def on_create_from_excel(self, file_path):
+        self.create_from_excel_file = file_path
+
+    def on_update_select(self, source_hostname, target_hostname):
+        self.source_hostname = source_hostname
+        self.target_hostname = target_hostname
+
+    def process_action(self):
+        action = self.current_action
+        if action == 'Download' and self.selected_config_name:
+            dl_location = None
+            for widget in self.panel_container.winfo_children():
+                if hasattr(widget, 'download_location'):
+                    dl_location = widget.download_location.get()
+                    break
+            if not dl_location:
+                dl_location = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip"
+            success = self.controller.download_configuration(self.selected_config_name, dl_location)
+            if success:
+                print(f"Successfully downloaded the ZIP file to {dl_location}")
+            else:
+                print("Download failed.")
+        elif action == 'Restore' and self.selected_config_name:
+            success = self.controller.restore_configuration(self.selected_config_name)
+            print("Restore successful!" if success else "Restore failed.")
+        elif action == 'Upload' and self.selected_file:
+            success = self.controller.upload_configuration(self.selected_file)
+            print("Upload successful!" if success else "Upload failed.")
+        elif action == 'Create' and self.create_data:
+            name, description = self.create_data
+            if name:
+                success = self.controller.create_configuration(name, description)
+                print("Configuration created successfully!" if success else "Creation failed.")
+            else:
+                print("Name is required for creation.")
+        elif action == 'Create from Excel' and self.create_from_excel_file:
+            success = self.controller.create_configuration_from_excel(self.create_from_excel_file)
+            print("Configuration created from Excel successfully!" if success else "Creation from Excel failed.")
+        elif action == 'Update' and self.source_hostname and self.target_hostname:
+            self.process_update()
+        else:
+            print("Required selections are missing for the chosen action.")
+
+    def process_update(self):
+        for button in self.side_panel_buttons.values():
+            button.config(state=tk.DISABLED)
+        
+        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
+        loading_dialog.start()
+        
+        def update_thread():
+            success = False
+            error_message = None
+            try:
+                success = self.controller.update_configuration(
+                    self.source_hostname,
+                    self.target_hostname,
+                    self.username,
+                    self.password
+                )
+            except Exception as e:
+                error_message = str(e)
+            finally:
+                if loading_dialog.winfo_exists():
+                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
+        
+        thread = threading.Thread(target=update_thread, daemon=True)
+        thread.start()
+
+    def update_complete(self, loading_dialog, success, error_message=None):
+        try:
+            for button in self.side_panel_buttons.values():
+                button.config(state=tk.NORMAL)
+            if loading_dialog.winfo_exists():
+                loading_dialog.destroy()
+            if success:
+                messagebox.showinfo("Success", "Update process completed successfully!")
+            else:
+                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            print(f"Error in update_complete: {str(e)}")
+    
+    def toggle_side_panel(self):
+        if self.is_panel_expanded:
+            self.side_panel.pack_forget()
+            self.toggle_button.config(text="▶")
+            self.is_panel_expanded = False
+        else:
+            self.side_panel.pack(side=tk.LEFT, fill=tk.Y, padx=0, pady=0)
+            self.toggle_button.config(text="◀")
+            self.is_panel_expanded = True
+
+# ------------------------------
+# LOADING SCREEN
+# ------------------------------
+class LoadingDialog(tk.Toplevel):
+    def __init__(self, parent, message="Processing..."):
+        super().__init__(parent)
+        self.title("Loading")
+        self.transient(parent)
+        self.grab_set()
+        self.overrideredirect(True)
+        window_width = 300
+        window_height = 100
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        main_frame = ttk.Frame(self, relief='raised', borderwidth=2)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        self.message_label = ttk.Label(main_frame, text=message, font=('TkDefaultFont', 10))
+        self.message_label.pack(pady=10)
+        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate', length=200)
+        self.progress_bar.pack(pady=10)
+        self.progress_bar.start(10)
+        self.update_idletasks()
+        self.lift()
+        self.focus_force()
+
+    def update_progress(self):
+        if self.winfo_exists():
+            self.update_idletasks()
+            self.after(100, self.update_progress)
+
+    def start(self):
+        self.update_progress()
+
+# -------------------------------
+# Main Application – Login screen appears immediately
+# -------------------------------
+class MainApp(tk.Tk):
+    def __init__(self, controller):
+        super().__init__()
+        self.controller = controller
+        self.title("Server Selector")
+        self.servers = [
+            ("DR - Chandler", "qdlp2bcmapp0002.ess.fiserv.one"),
+            ("DR - Omaha", "Sylp2bcmapp0002.ess.fiserv.one")
+        ]
+        self.selected_hostname = None
+        self.username = None
+        self.password = None
+        self.saved_configs = None
+        self.geometry("1100x600")
+        self.show_login()
+
+    def show_login(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.title("Login")
+        default_hostname = self.servers[0][1]
+        self.login_panel = LoginPanel(self, default_hostname, on_login=self.on_login)
+        self.login_panel.pack(fill=tk.BOTH, expand=True)
+
+    def on_login(self, hostname, username, password):
+        self.username = username
+        self.password = password
+        self.controller.connect(hostname, username, password)
+        self.saved_configs = self.controller.get_saved_configurations()
+        self.show_action_panel()
+
+    def show_action_panel(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.title("Manage Saved Configurations")
+        self.action_panel = ActionPanel(self, self.controller, self.username, self.password,
+                                        self.saved_configs, self.servers)
+        self.action_panel.pack(fill=tk.BOTH, expand=True)
+
+def main():
+    mvcm_instance = mvcm.Mvcm()
+    controller = BusinessController(mvcm_instance)
+    app = MainApp(controller)
+    app.mainloop()
+
+if __name__ == "__main__":
+    main()
