@@ -1,91 +1,108 @@
 # -------------------------------
-# Download/Restore Panel
+# Create From Excel Panel
 # -------------------------------
-class DownloadRestorePanel(tk.Frame):
-    def __init__(self, master, action, saved_configs, username, mvcm_instance, on_select, **kwargs):
+import tkinter as tk
+from tkinter import ttk, filedialog
+import os
+
+class CreateFromExcelPanel(tk.Frame):
+    def __init__(self, master, on_file_selected, **kwargs):
         super().__init__(master, **kwargs)
-        self.action = action
-        self.saved_configs = saved_configs
-        self.username = username
-        self.mvcm = mvcm_instance
-        self.on_select = on_select
+        self.on_file_selected = on_file_selected
+        self.excel_file_path = None
         self.create_widgets()
 
     def create_widgets(self):
         container = ttk.Frame(self)
         container.pack(fill=tk.BOTH, expand=True)
-        refresh_frame = ttk.Frame(container)
-        refresh_frame.pack(fill=tk.X, pady=(0, 10))
-        refresh_button = ttk.Button(refresh_frame, text="↻ Refresh", command=self.refresh_configs)
-        refresh_button.pack(side=tk.RIGHT, padx=5)
-        table_frame = ttk.Frame(container)
-        table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        self.config_tree = ttk.Treeview(table_frame, 
-                                        columns=("Number", "Name", "Description", "Date", "User"), 
-                                        show='headings')
-        self.config_tree.heading("Number", text="#")
-        self.config_tree.heading("Name", text="Name")
-        self.config_tree.heading("Description", text="Description")
-        self.config_tree.heading("Date", text="Date")
-        self.config_tree.heading("User", text="User")
-        self.config_tree.column("Number", width=50)
-        self.config_tree.column("Name", width=200)
-        self.config_tree.column("Description", width=400)
-        self.config_tree.column("Date", width=100)
-        self.config_tree.column("User", width=100)
-        self.config_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.config_tree.yview)
-        self.config_tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.populate_configs()
-        self.bind_all('<KeyPress>', self.handle_number_key)
-        self.config_tree.bind('<<TreeviewSelect>>', self.on_tree_select)
+        
+        # File selection section
+        file_section = ttk.LabelFrame(container, text="Excel File Selection")
+        file_section.pack(fill=tk.X, padx=10, pady=10)
+        
+        file_frame = ttk.Frame(file_section)
+        file_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.file_path_var = tk.StringVar()
+        file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50)
+        file_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_excel_file)
+        browse_button.pack(side=tk.RIGHT)
+        
+        # Preview section (will be populated once file is selected)
+        preview_section = ttk.LabelFrame(container, text="Excel Preview")
+        preview_section.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.preview_frame = ttk.Frame(preview_section)
+        self.preview_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        preview_message = ttk.Label(self.preview_frame, text="Select an Excel file to preview its content")
+        preview_message.pack(pady=20)
+        
+        # Action buttons
+        button_frame = ttk.Frame(container)
+        button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        load_button = ttk.Button(button_frame, text="Load Excel Data", command=self.load_excel_data)
+        load_button.pack(side=tk.RIGHT, padx=5)
+        
+        cancel_button = ttk.Button(button_frame, text="Cancel", command=lambda: self.master.destroy())
+        cancel_button.pack(side=tk.RIGHT, padx=5)
 
-    def refresh_configs(self):
-        try:
-            r = self.mvcm.get("/saved-configurations", "application/json")
-            if r.ok:
-                self.saved_configs = r.json()
-                for item in self.config_tree.get_children():
-                    self.config_tree.delete(item)
-                for idx, config in enumerate(self.saved_configs, 1):
-                    self.config_tree.insert("", tk.END, values=(
-                        str(idx),
-                        config['name'],
-                        config['description'],
-                        config['date'],
-                        config['user']
-                    ))
-                print("Configurations refreshed successfully!")
-            else:
-                print(f"Failed to refresh configurations. Status code: {r.status_code}")
-        except Exception as e:
-            print(f"Error refreshing configurations: {str(e)}")
-
-    def populate_configs(self):
-        if self.saved_configs:
-            for idx, config in enumerate(self.saved_configs, 1):
-                self.config_tree.insert("", tk.END, values=(
-                    str(idx),
-                    config['name'],
-                    config['description'],
-                    config['date'],
-                    config['user']
-                ))
-
-    def handle_number_key(self, event):
-        if event.char.isdigit():
-            index = int(event.char)
-            if 1 <= index <= len(self.saved_configs):
-                children = self.config_tree.get_children()
-                self.config_tree.selection_remove(self.config_tree.selection())
-                self.config_tree.selection_set(children[index-1])
-                self.config_tree.focus(children[index-1])
-                item = self.config_tree.item(children[index-1])
-                self.on_select(item['values'][1])
-
-    def on_tree_select(self, event):
-        selected = self.config_tree.selection()
-        if selected:
-            item = self.config_tree.item(selected[0])
-            self.on_select(item['values'][1])
+    def browse_excel_file(self):
+        """Open file dialog to select an Excel file"""
+        filetypes = [
+            ("Excel files", "*.xlsx;*.xls"),
+            ("All files", "*.*")
+        ]
+        
+        file_path = filedialog.askopenfilename(
+            title="Select Excel File",
+            filetypes=filetypes
+        )
+        
+        if file_path:
+            self.excel_file_path = file_path
+            self.file_path_var.set(file_path)
+            self.show_preview()
+    
+    def show_preview(self):
+        """Display a preview of the selected Excel file"""
+        # Clear previous preview
+        for widget in self.preview_frame.winfo_children():
+            widget.destroy()
+            
+        if self.excel_file_path:
+            # Create a table to show preview of Excel data
+            preview_tree = ttk.Treeview(self.preview_frame)
+            preview_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+            # Add scrollbars
+            vsb = ttk.Scrollbar(self.preview_frame, orient="vertical", command=preview_tree.yview)
+            vsb.pack(side=tk.RIGHT, fill=tk.Y)
+            hsb = ttk.Scrollbar(self.preview_frame, orient="horizontal", command=preview_tree.xview)
+            hsb.pack(side=tk.BOTTOM, fill=tk.X)
+            
+            preview_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            
+            # Set up columns - this will be populated by ExcelParser
+            preview_tree.configure(show="headings")
+            
+            # Display a message to indicate preview is ready
+            status_label = ttk.Label(self.preview_frame, text="Preview data will appear here")
+            status_label.pack(pady=20)
+            
+            # This is where you would call your ExcelParser to display a preview
+            # For now, we'll just display a placeholder message
+            status_label.config(text=f"Excel file selected: {os.path.basename(self.excel_file_path)}\nUse the Load button to process this file.")
+    
+    def load_excel_data(self):
+        """Load and process the selected Excel file"""
+        if self.excel_file_path:
+            # Call the callback function with the selected file path
+            self.on_file_selected(self.excel_file_path)
+        else:
+            # Show error if no file is selected
+            tk.messagebox.showerror("Error", "Please select an Excel file first.")
+            
