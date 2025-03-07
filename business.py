@@ -20,8 +20,11 @@ class BusinessController:
         self.mvcm = mvcm_instance
 
     def connect(self, hostname, username, password):
-        self.mvcm.connect(hostname, username, password)
-
+        try:
+            self.mvcm.connect(hostname, username, password)
+        except Exception:
+            pass
+        
     def get_saved_configurations(self):
         r = self.mvcm.get("/saved-configurations", "application/json")
         return r.json() if r.ok else []
