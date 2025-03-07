@@ -222,12 +222,7 @@ class ExcelParser:
         records = self.current_data.to_dict('records')
         
         # Ensure all values are JSON-serializable and exclude specific keys
-        for record in records:
-            keys_to_remove = ['Chip', 'Port', 'Location']
-            for key in keys_to_remove:
-                if key in record:
-                    del record[key]
-            
+        for record in records:          
             for key, value in record.items():
                 if isinstance(value, np.integer):
                     record[key] = int(value)
@@ -276,6 +271,9 @@ class ExcelParser:
         for json_obj in json_list:
             # Extract the 'name' value and remove it from the JSON object
             name = json_obj.pop('name', None)
+            serverName = json_obj.pop('Chip', None)
+            serverName = json_obj.pop('Port', None)
+            serverName = json_obj.pop('Location', None)
             
             if name is not None:
                 # Construct the URL with the 'name' value
@@ -287,6 +285,36 @@ class ExcelParser:
                 # Check if the response is OK
                 if not response.ok:
                     print(f"Failed to create CCS server for {name}")
+                    return False
+            else:
+                print("No 'name' key found in JSON object")
+                return False
+        
+        return True
+    
+    def create_ccs_console(self, mvcm_inst, json_list):
+        """
+        Iterates through each JSON object, extracts the 'name' value, attaches it to the URL,
+        removes it from the JSON, and passes the modified JSON into the post function.
+        """
+        for json_obj in json_list:
+            # Extract the 'name' value and remove it from the JSON object
+            serverName = json_obj.pop('Chip', None)
+            sessionName = json_obj.pop('name', None)
+            DR = json_obj.pop('DR?', None)
+            LPAR = json_obj.pop('LPAR', None)
+            CUAddress = json_obj.pop('CU Address', None)
+            
+            if serverName is not None and sessionName is not None:
+                # Construct the URL with the 'name' value
+                url = f'/ccs/servers/{serverName}/sessions/{sessionName}'
+                
+                # Pass the modified JSON object into the post function
+                response = mvcm_inst.post(url, json_obj)
+                print(printResponseError(response))
+                # Check if the response is OK
+                if not response.ok:
+                    print(f"Failed to create CCS session {sessionName} for {serverName}")
                     return False
             else:
                 print("No 'name' key found in JSON object")

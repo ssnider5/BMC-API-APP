@@ -513,7 +513,122 @@ class CreateFromExcelPanel(tk.Frame):
             messagebox.showinfo("Import Successful", "Data has been successfully imported!")
         except Exception as e:
             messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
+
+
+# -------------------------------
+# Create Console From Excel Panel
+# -------------------------------
+class CreateConsoleFromExcelPanel(tk.Frame):
+    def __init__(self, master, excel_parser, mvcm_inst, **kwargs):
+        super().__init__(master, **kwargs)
+        self.excel_parser = excel_parser
+        self.selected_file = None
+        self.create_widgets()
+        self.mvcm_inst = mvcm_inst
+
+    def create_widgets(self):
+        # Main container
+        container = ttk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+        
+        # File selection frame
+        file_frame = ttk.Frame(container)
+        file_frame.pack(fill=tk.X, pady=(10, 20))
+        
+        # File path display
+        self.file_path_var = tk.StringVar()
+        self.file_path_var.set("No file selected")
+        file_path_label = ttk.Label(file_frame, text="Excel File:")
+        file_path_label.pack(side=tk.LEFT, padx=5)
+        file_path_entry = ttk.Entry(file_frame, textvariable=self.file_path_var, width=50, state='readonly')
+        file_path_entry.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        
+        # Browse button
+        browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_file)
+        browse_button.pack(side=tk.LEFT, padx=5)
+        
+        # Table frame
+        self.table_frame = ttk.Frame(container)
+        self.table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Initially empty message
+        self.empty_label = ttk.Label(self.table_frame, text="Select an Excel file to display data")
+        self.empty_label.pack(expand=True)
+        
+        # Actions frame
+        actions_frame = ttk.Frame(container)
+        actions_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Import button (initially disabled)
+        self.import_button = ttk.Button(actions_frame, text="Create CCS servers", command=self.import_data, state='disabled')
+        self.import_button.pack(side=tk.BOTTOM, pady=10)
+
+    def browse_file(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Excel File",
+            filetypes=[("Excel files", "*.xlsx *.xls")]
+        )
+        
+        if file_path:
+            self.selected_file = file_path
+            self.file_path_var.set(file_path)
+            self.load_excel_preview()
+    
+    def load_excel_preview(self):
+        # Clear existing table if any
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+        
+        try:
+            # Use the excel parser to read the file
+            headers, data = self.excel_parser.read_excel(self.selected_file, sheet_name=1)
             
+            # Create new treeview for the data
+            self.data_tree = ttk.Treeview(self.table_frame, columns=headers, show='headings')
+            
+            # Set column headings
+            for header in headers:
+                self.data_tree.heading(header, text=header)
+                # Adjust column width based on content
+                self.data_tree.column(header, width=100)
+            
+            # Insert data rows
+            for row in data:
+                self.data_tree.insert("", tk.END, values=row)
+            
+            # Add scrollbars
+            y_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.VERTICAL, command=self.data_tree.yview)
+            self.data_tree.configure(yscrollcommand=y_scrollbar.set)
+            
+            x_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.HORIZONTAL, command=self.data_tree.xview)
+            self.data_tree.configure(xscrollcommand=x_scrollbar.set)
+            
+            # Pack everything
+            self.data_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+            
+            # Enable import button
+            self.import_button.config(state='normal')
+            
+        except Exception as e:
+            error_label = ttk.Label(self.table_frame, text=f"Error loading Excel file: {str(e)}", foreground="red")
+            error_label.pack(expand=True)   
+            self.import_button.config(state='disabled')
+    
+    def import_data(self):
+        # This method would be implemented to handle the actual import process
+        # For example, sending the data to an API or processing it further
+        try:
+            # Example implementation:
+            json = self.excel_parser.get_json_data()
+            print(json)
+            self.excel_parser.create_ccs_console(self.mvcm_inst, json)
+            # result = self.mvcm.post("/import-excel-data", json=self.excel_parser.get_json_data())
+            messagebox.showinfo("Import Successful", "Data has been successfully imported!")
+        except Exception as e:
+            messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
+
 # # -------------------------------
 # Action Panel – now features a banner with buttons,
 # displays the title and underneath it the current server info
@@ -650,7 +765,7 @@ class ActionPanel(tk.Frame):
         self.side_panel_buttons = {}
 
                 # Create buttons for saved configurations in the side panel
-        options = ["Create from Excel"]
+        options = ["Create from Excel", "Create Console from Excel"]
         for option in options:
             test = tk.Button(self.side_panel,
                            text=option,
@@ -800,6 +915,10 @@ class ActionPanel(tk.Frame):
         elif action == 'Create from Excel':
             excel_parser = ExcelParser()
             panel = CreateFromExcelPanel(self.panel_container, excel_parser, self.controller.mvcm)
+            panel.pack(fill=tk.BOTH, expand=True)
+        elif action == "Create Console from Excel":
+            excel_parser = ExcelParser()
+            panel = CreateConsoleFromExcelPanel(self.panel_container, excel_parser, self.controller.mvcm)
             panel.pack(fill=tk.BOTH, expand=True)
     
     def toggle_side_panel(self):
