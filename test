@@ -103,15 +103,8 @@ class CreateFromExcelPanel(tk.Frame):
         try:
             # Example implementation:
             json_data = self.excel_parser.get_json_data()
+            self.created_servers = self.excel_parser.extract_names(json_data)
             result = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
-            
-            # Store created server names if available
-            if hasattr(result, 'servers'):
-                self.created_servers = [server.get('name', '') for server in result.servers]
-            elif isinstance(result, list):
-                self.created_servers = [server.get('name', '') for server in result if isinstance(server, dict)]
-            elif isinstance(result, dict) and 'servers' in result:
-                self.created_servers = [server.get('name', '') for server in result['servers']]
             
             messagebox.showinfo("Import Successful", "Data has been successfully imported!")
             
