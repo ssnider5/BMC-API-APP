@@ -508,18 +508,12 @@ class CreateFromExcelPanel(tk.Frame):
 # and refreshes the saved configurations correctly when a new server is selected.
 # -------------------------------
 class ActionPanel(tk.Frame):
-    def __init__(self, master, controller, username, password, saved_configs, servers, **kwargs):
+    def __init__(self, master, controller, username, password, servers, **kwargs):
         super().__init__(master, **kwargs)
         self.controller = controller
         self.username = username
         self.password = password
-        self.saved_configs = saved_configs
         self.servers = servers  # List of tuples: (Environment, Hostname)
-        self.selected_config_name = None
-        self.selected_file = None
-        self.create_data = None
-        self.source_hostname = None
-        self.target_hostname = None
         self.current_action = None
         self.action_buttons = {}  # To store references to action buttons
         self.side_panel_buttons = {}  # To store references to side panel buttons
@@ -878,7 +872,6 @@ class MainApp(tk.Tk):
         self.selected_hostname = None
         self.username = None
         self.password = None
-        self.saved_configs = None
         self.geometry("1100x600")
         self.show_login()
 
@@ -901,7 +894,7 @@ class MainApp(tk.Tk):
             widget.destroy()
         self.title("Manage Saved Configurations")
         self.action_panel = ActionPanel(self, self.controller, self.username, self.password,
-                                        self.saved_configs, self.servers)
+                                        self.servers)
         self.action_panel.pack(fill=tk.BOTH, expand=True)
 
 def main():
