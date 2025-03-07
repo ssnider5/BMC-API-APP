@@ -87,6 +87,8 @@ class LoginPanel(tk.Frame):
         password = self.password_entry.get()
         self.on_login(self.hostname, username, password)
 
+        
+
 # -------------------------------
 # Download/Restore Panel
 # -------------------------------
@@ -177,13 +179,21 @@ class DownloadRestorePanel(tk.Frame):
             dl_location = None
             if not dl_location:
                 dl_location = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip"
-            success = self.controller.download_configuration(self.selected_config_name, dl_location)
+            try:
+                success = self.controller.download_configuration(self.selected_config_name, dl_location)
+                messagebox.showinfo("Download Successful", "Data has been successfully downloaded!")
+            except Exception as e:
+                messagebox.showerror("Download Failed", f"Failed to download config: {str(e)}")
             if success:
                 print(f"Successfully downloaded the ZIP file to {dl_location}")
             else:
                 print("Download failed.")
         elif self.action == 'Restore' and self.selected_config_name:
-            success = self.controller.restore_configuration(self.selected_config_name)
+            try:
+                success = self.controller.restore_configuration(self.selected_config_name)
+                messagebox.showinfo("Restore Successful", "Data has been successfully restored!")
+            except Exception as e:
+                messagebox.showerror("Restore Failed", f"Failed to restore config: {str(e)}")
             if success:
                 print(f"Successfully restored")
             else:
@@ -259,7 +269,10 @@ class CreatePanel(tk.Frame):
         name, description = self.name_var.get(), self.desc_var.get()
         if name:
             success = self.controller.create_configuration(name, description)
-            print("Configuration created successfully!" if success else "Creation failed.")
+            if success:
+                messagebox.showinfo("Create Successful", "Config has been successfully created!")
+            else:
+                messagebox.showerror("Create Failed", f"Failed to create saved config")
         else:
             print("Name is required for creation.")
 
@@ -434,7 +447,7 @@ class CreateFromExcelPanel(tk.Frame):
         
         # Import button (initially disabled)
         self.import_button = ttk.Button(actions_frame, text="Create CCS servers", command=self.import_data, state='disabled')
-        self.import_button.pack(side=tk.RIGHT, padx=5)
+        self.import_button.pack(side=tk.BOTTOM, pady=10)
 
     def browse_file(self):
         file_path = filedialog.askopenfilename(
@@ -886,7 +899,10 @@ class MainApp(tk.Tk):
     def on_login(self, hostname, username, password):
         self.username = username
         self.password = password
-        self.controller.connect(hostname, username, password)
+        try:    
+            self.controller.connect(hostname, username, password)
+        except Exception as e:
+            messagebox.showerror("Log on Failed", f"{str(e)}")
         self.show_action_panel()
 
     def show_action_panel(self):
