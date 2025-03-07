@@ -91,14 +91,15 @@ class LoginPanel(tk.Frame):
 # Download/Restore Panel
 # -------------------------------
 class DownloadRestorePanel(tk.Frame):
-    def __init__(self, master, action, saved_configs, username, mvcm_instance, on_select, **kwargs):
+    def __init__(self, master, controller, username, action, **kwargs):
         super().__init__(master, **kwargs)
         self.action = action
-        self.saved_configs = saved_configs
+        self.saved_configs = None
         self.username = username
-        self.mvcm = mvcm_instance
-        self.on_select = on_select
+        self.controller = controller
+        self.selected_config_name = None
         self.create_widgets()
+        self.refresh_configs()
 
     def create_widgets(self):
         container = ttk.Frame(self)
@@ -126,13 +127,16 @@ class DownloadRestorePanel(tk.Frame):
         scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.config_tree.yview)
         self.config_tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.populate_configs()
+        self.button_frame = ttk.Frame(self.master)
+        self.button_frame.pack(side=tk.BOTTOM,pady=(0,10))
+        process_button = tk.Button(self.button_frame, text=self.action, command=self.process_action)
+        process_button.pack(pady=10)
         self.bind_all('<KeyPress>', self.handle_number_key)
         self.config_tree.bind('<<TreeviewSelect>>', self.on_tree_select)
 
     def refresh_configs(self):
         try:
-            r = self.mvcm.get("/saved-configurations", "application/json")
+            r = self.controller.mvcm.get("/saved-configurations", "application/json")
             if r.ok:
                 self.saved_configs = r.json()
                 for item in self.config_tree.get_children():
@@ -151,17 +155,6 @@ class DownloadRestorePanel(tk.Frame):
         except Exception as e:
             print(f"Error refreshing configurations: {str(e)}")
 
-    def populate_configs(self):
-        if self.saved_configs:
-            for idx, config in enumerate(self.saved_configs, 1):
-                self.config_tree.insert("", tk.END, values=(
-                    str(idx),
-                    config['name'],
-                    config['description'],
-                    config['date'],
-                    config['user']
-                ))
-
     def handle_number_key(self, event):
         if event.char.isdigit():
             index = int(event.char)
@@ -171,21 +164,38 @@ class DownloadRestorePanel(tk.Frame):
                 self.config_tree.selection_set(children[index-1])
                 self.config_tree.focus(children[index-1])
                 item = self.config_tree.item(children[index-1])
-                self.on_select(item['values'][1])
+                self.selected_config_name = item['values'][1]
 
     def on_tree_select(self, event):
         selected = self.config_tree.selection()
         if selected:
             item = self.config_tree.item(selected[0])
-            self.on_select(item['values'][1])
+            self.selected_config_name = item['values'][1]
 
+    def process_action(self):
+        if self.action == 'Download' and self.selected_config_name:
+            dl_location = None
+            if not dl_location:
+                dl_location = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip"
+            success = self.controller.download_configuration(self.selected_config_name, dl_location)
+            if success:
+                print(f"Successfully downloaded the ZIP file to {dl_location}")
+            else:
+                print("Download failed.")
+        elif self.action == 'Restore' and self.selected_config_name:
+            success = self.controller.restore_configuration(self.selected_config_name)
+            if success:
+                print(f"Successfully restored")
+            else:
+                print("Restore failed.")
 # -------------------------------
 # Upload Panel
 # -------------------------------
 class UploadPanel(tk.Frame):
-    def __init__(self, master, on_file_selected, **kwargs):
+    def __init__(self, master, controller, **kwargs):
         super().__init__(master, **kwargs)
-        self.on_file_selected = on_file_selected
+        self.controller = controller
+        self.selected_file = None
         self.create_widgets()
 
     def create_widgets(self):
@@ -199,26 +209,30 @@ class UploadPanel(tk.Frame):
         self.file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         browse_button = ttk.Button(file_frame, text="Browse", command=self.browse_file)
         browse_button.pack(side=tk.LEFT)
-        self.file_path.trace('w', self.on_file_path_change)
+        self.button_frame = ttk.Frame(self.master)
+        self.button_frame.pack(side=tk.BOTTOM,pady=(0,10))
+        process_button = tk.Button(self.button_frame, text="Upload", command=self.process_action)
+        process_button.pack(pady=10)
 
     def browse_file(self):
         filename = filedialog.askopenfilename(
             title="Select a ZIP file", filetypes=[("ZIP files", "*.zip")])
         if filename:
             self.file_path.set(filename)
-            self.on_file_selected(filename)  # Call callback immediately when file is selected
+            if filename and os.path.exists(filename):
+                self.selected_file = filename
 
-    def on_file_path_change(self, *args):
-        if self.file_path.get():
-            self.on_file_selected(self.file_path.get())  # Call callback when path changes
+    def process_action(self):
+        success = self.controller.upload_configuration(self.selected_file)
+        print("Upload successful!" if success else "Upload failed.")
 
 # -------------------------------
 # Create Panel
 # -------------------------------
 class CreatePanel(tk.Frame):
-    def __init__(self, master, on_create, **kwargs):
+    def __init__(self, master, controller, **kwargs):
         super().__init__(master, **kwargs)
-        self.on_create = on_create
+        self.controller = controller
         self.create_widgets()
 
     def create_widgets(self):
@@ -236,25 +250,29 @@ class CreatePanel(tk.Frame):
         self.desc_var = tk.StringVar()
         desc_entry = ttk.Entry(desc_frame, textvariable=self.desc_var, width=60)
         desc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Add trace to both variables to update the parent when they change
-        self.name_var.trace('w', self.on_field_change)
-        self.desc_var.trace('w', self.on_field_change)
+        self.button_frame = ttk.Frame(self.master)
+        self.button_frame.pack(side=tk.BOTTOM,pady=(0,10))
+        process_button = tk.Button(self.button_frame, text="Create", command=self.process_action)
+        process_button.pack(pady=10)       
 
-    def on_field_change(self, *args):
-        name = self.name_var.get()
-        description = self.desc_var.get()
-        if name:  # Only trigger callback if name is not empty
-            self.on_create(name, description)
+    def process_action(self):
+        name, description = self.name_var.get(), self.desc_var.get()
+        if name:
+            success = self.controller.create_configuration(name, description)
+            print("Configuration created successfully!" if success else "Creation failed.")
+        else:
+            print("Name is required for creation.")
 
 # -------------------------------
 # Update Panel
 # -------------------------------
 class UpdatePanel(tk.Frame):
-    def __init__(self, master, servers, on_update, **kwargs):
+    def __init__(self, master, controller, servers, username, password, **kwargs):
         super().__init__(master, **kwargs)
+        self.controller = controller
         self.servers = servers
-        self.on_update = on_update
+        self.username = username
+        self.password = password
         self.source_hostname = None
         self.target_hostname = None
         self.create_widgets()
@@ -287,6 +305,10 @@ class UpdatePanel(tk.Frame):
         for idx, (env, hostname) in enumerate(self.servers, 1):
             self.source_tree.insert("", tk.END, values=(str(idx), env, hostname))
             self.target_tree.insert("", tk.END, values=(str(idx), env, hostname))
+        self.button_frame = ttk.Frame(self.master)
+        self.button_frame.pack(side=tk.BOTTOM,pady=(0,10))
+        process_button = tk.Button(self.button_frame, text="Create", command=self.process_action)
+        process_button.pack(pady=10)       
         self.source_tree.bind('<<TreeviewSelect>>', self.on_source_select)
         self.target_tree.bind('<<TreeviewSelect>>', self.on_target_select)
         self.bind_all('<KeyPress>', self.handle_number_keys)
@@ -296,14 +318,12 @@ class UpdatePanel(tk.Frame):
         if selected:
             item = self.source_tree.item(selected[0])
             self.source_hostname = item['values'][2]
-            self.check_selection_status()
 
     def on_target_select(self, event):
         selected = self.target_tree.selection()
         if selected:
             item = self.target_tree.item(selected[0])
             self.target_hostname = item['values'][2]
-            self.check_selection_status()
 
     def handle_number_keys(self, event):
         if event.char.isdigit():
@@ -319,11 +339,53 @@ class UpdatePanel(tk.Frame):
                     self.source_tree.selection_set(children[index-1])
                     self.source_tree.focus(children[index-1])
                     self.source_hostname = self.servers[index-1][1]
-                self.check_selection_status()
-
-    def check_selection_status(self):
+    
+    def process_action(self):
         if self.source_hostname and self.target_hostname:
-            self.on_update(self.source_hostname, self.target_hostname)
+            self.process_update()
+        else:
+            print("You need to select two servers.")
+
+    def process_update(self):      
+        # Create and show loading dialog
+        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
+        loading_dialog.start()  # Start the progress bar animation
+        
+        def update_thread():
+            success = False
+            error_message = None
+            try:
+                success = self.controller.update_configuration(
+                    self.source_hostname,
+                    self.target_hostname,
+                    self.username,
+                    self.password
+                )
+            except Exception as e:
+                error_message = str(e)
+            finally:
+                # Schedule UI updates in the main thread
+                if loading_dialog.winfo_exists():  # Check if dialog still exists
+                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
+        
+        # Start the update process in a separate thread
+        thread = threading.Thread(target=update_thread, daemon=True)
+        thread.start()
+
+    def update_complete(self, loading_dialog, success, error_message=None):
+        try:          
+            # Destroy the loading dialog
+            if loading_dialog.winfo_exists():
+                loading_dialog.destroy()
+            
+            # Show appropriate message
+            if success:
+                messagebox.showinfo("Success", "Update process completed successfully!")
+            else:
+                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            print(f"Error in update_complete: {str(e)}")
 
 
 # -------------------------------
@@ -371,7 +433,7 @@ class CreateFromExcelPanel(tk.Frame):
         actions_frame.pack(fill=tk.X, pady=(10, 0))
         
         # Import button (initially disabled)
-        self.import_button = ttk.Button(actions_frame, text="Import Data", command=self.import_data, state='disabled')
+        self.import_button = ttk.Button(actions_frame, text="Create CCS servers", command=self.import_data, state='disabled')
         self.import_button.pack(side=tk.RIGHT, padx=5)
 
     def browse_file(self):
@@ -483,7 +545,7 @@ class ActionPanel(tk.Frame):
         separator = ttk.Separator(banner_frame, orient=tk.VERTICAL)
         separator.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         
-        # New action buttons in the banner
+        # Action buttons in the banner
         options = ["Saved Configurations", "CCS Server"]
         for option in options:
             btn = tk.Button(banner_frame,
@@ -497,7 +559,7 @@ class ActionPanel(tk.Frame):
         # Orange line underneath the banner
         # ---------------------------
         orange_line = tk.Frame(self, bg="orange", height=2)
-        orange_line.pack(fill=tk.X, padx=0, pady=(0, 10))
+        orange_line.pack(fill=tk.X, padx=0, pady=(0, 0))
         
         # ---------------------------
         # Main content container to hold side panel and content area
@@ -646,8 +708,6 @@ class ActionPanel(tk.Frame):
         # ---------------------------
         self.panel_container = ttk.Frame(self.content_area)
         self.panel_container.pack(fill=tk.BOTH, expand=True, pady=10)
-        self.button_frame = ttk.Frame(self.content_area)
-        self.button_frame.pack(pady=10)
         
     def setup_ccs_server_content(self):
         # ---------------------------
@@ -716,129 +776,24 @@ class ActionPanel(tk.Frame):
         # Clear any existing panel from the panel container and button frame
         for widget in self.panel_container.winfo_children():
             widget.destroy()
-        for widget in self.button_frame.winfo_children():
-            widget.destroy()
 
         if action in ['Download', 'Restore']:
-            panel = DownloadRestorePanel(self.panel_container, action, self.saved_configs,
-                                        self.username, self.controller.mvcm, self.on_config_select)
+            panel = DownloadRestorePanel(self.panel_container, self.controller,
+                                        self.username, self.current_action)
             panel.pack(fill=tk.BOTH, expand=True)
-            panel.refresh_configs()
         elif action == 'Upload':
-            panel = UploadPanel(self.panel_container, self.on_file_select)
+            panel = UploadPanel(self.panel_container, self.controller)
             panel.pack(fill=tk.BOTH, expand=True)
         elif action == 'Create':
-            panel = CreatePanel(self.panel_container, self.on_create)
+            panel = CreatePanel(self.panel_container, self.controller)
             panel.pack(fill=tk.BOTH, expand=True)
         elif action == 'Update':
-            panel = UpdatePanel(self.panel_container, self.servers, self.on_update_select)
+            panel = UpdatePanel(self.panel_container, self.controller, self.servers, self.username, self.password)
             panel.pack(fill=tk.BOTH, expand=True)
         elif action == 'Create from Excel':
             excel_parser = ExcelParser()
             panel = CreateFromExcelPanel(self.panel_container, excel_parser, self.controller.mvcm)
             panel.pack(fill=tk.BOTH, expand=True)
-        # Add the process button
-        process_button = tk.Button(self.button_frame, text=action, command=self.process_action)
-        process_button.pack(pady=10)
-        
-        self.master.bind('<Return>', lambda e: self.process_action())
-
-    def on_config_select(self, config_name):
-        self.selected_config_name = config_name
-
-    def on_file_select(self, file_path):
-        if file_path and os.path.exists(file_path):
-            self.selected_file = file_path
-
-    def on_create(self, name, description):
-        if name:
-            self.create_data = (name, description)
-
-    def on_update_select(self, source_hostname, target_hostname):
-        self.source_hostname = source_hostname
-        self.target_hostname = target_hostname
-
-    def process_action(self):
-        action = self.current_action
-        if action == 'Download' and self.selected_config_name:
-            dl_location = None
-            for widget in self.panel_container.winfo_children():
-                if hasattr(widget, 'download_location'):
-                    dl_location = widget.download_location.get()
-                    break
-            if not dl_location:
-                dl_location = fr"C:\Users\{self.username}\OneDrive - Fiserv Corp\Documents\saved_configuration.zip"
-            success = self.controller.download_configuration(self.selected_config_name, dl_location)
-            if success:
-                print(f"Successfully downloaded the ZIP file to {dl_location}")
-            else:
-                print("Download failed.")
-        elif action == 'Restore' and self.selected_config_name:
-            success = self.controller.restore_configuration(self.selected_config_name)
-            print("Restore successful!" if success else "Restore failed.")
-        elif action == 'Upload' and self.selected_file:
-            success = self.controller.upload_configuration(self.selected_file)
-            print("Upload successful!" if success else "Upload failed.")
-        elif action == 'Create' and self.create_data:
-            name, description = self.create_data
-            if name:
-                success = self.controller.create_configuration(name, description)
-                print("Configuration created successfully!" if success else "Creation failed.")
-            else:
-                print("Name is required for creation.")
-        elif action == 'Update' and self.source_hostname and self.target_hostname:
-            self.process_update()
-        else:
-            print("Required selections are missing for the chosen action.")
-
-    def process_update(self):
-        # Disable all buttons during update
-        for button in self.side_panel_buttons.values():
-            button.config(state=tk.DISABLED)
-        
-        # Create and show loading dialog
-        loading_dialog = LoadingDialog(self, "Updating configuration, please wait...")
-        loading_dialog.start()  # Start the progress bar animation
-        
-        def update_thread():
-            success = False
-            error_message = None
-            try:
-                success = self.controller.update_configuration(
-                    self.source_hostname,
-                    self.target_hostname,
-                    self.username,
-                    self.password
-                )
-            except Exception as e:
-                error_message = str(e)
-            finally:
-                # Schedule UI updates in the main thread
-                if loading_dialog.winfo_exists():  # Check if dialog still exists
-                    self.after(0, lambda: self.update_complete(loading_dialog, success, error_message))
-        
-        # Start the update process in a separate thread
-        thread = threading.Thread(target=update_thread, daemon=True)
-        thread.start()
-
-    def update_complete(self, loading_dialog, success, error_message=None):
-        try:
-            # Re-enable all buttons
-            for button in self.side_panel_buttons.values():
-                button.config(state=tk.NORMAL)
-            
-            # Destroy the loading dialog
-            if loading_dialog.winfo_exists():
-                loading_dialog.destroy()
-            
-            # Show appropriate message
-            if success:
-                messagebox.showinfo("Success", "Update process completed successfully!")
-            else:
-                error_msg = "Update failed." if not error_message else f"Update failed: {error_message}"
-                messagebox.showerror("Error", error_msg)
-        except Exception as e:
-            print(f"Error in update_complete: {str(e)}")
     
     def toggle_side_panel(self):
         """Toggle the side panel between collapsed and expanded states"""
@@ -939,7 +894,6 @@ class MainApp(tk.Tk):
         self.username = username
         self.password = password
         self.controller.connect(hostname, username, password)
-        self.saved_configs = self.controller.get_saved_configurations()
         self.show_action_panel()
 
     def show_action_panel(self):
