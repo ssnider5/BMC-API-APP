@@ -235,24 +235,37 @@ class CreateFromExcelPanel(tk.Frame):
                 # Send POST request to start the server
                 endpoint = f"/api/ccs/servers/{server_name}/operations/start"
                 response = self.mvcm_inst.post(endpoint)
-                
-                # Process response
+
+                r = self.mvcm_inst.getlog(server_name)
+                log_text = r.text
+
+                # Split the log text into lines
+                lines = log_text.splitlines()
+
                 is_success = False
-                error_code = None
+                # Check if there are at least three lines
+                if len(lines) >= 3:
+                    # Get the third-to-last line
+                    third_to_last_line = lines[-3]
+                    
+                    # Check if the third-to-last line contains "Error exit"
+                    if "Error exit" in third_to_last_line:
+                        is_success = False
+                        print("The third-to-last line contains 'Error exit'.")
+                    else:
+                        is_success = True
+                        print("The third-to-last line does not contain 'Error exit'.")
+                else:
+                    print("The log does not have enough lines.")
+
                 
-                # Determine if the operation was successful
-                if hasattr(response, 'status_code'):
-                    is_success = 200 <= response.status_code < 300
-                    error_code = response.status_code if not is_success else None
-                elif isinstance(response, dict):
-                    is_success = response.get('status', 0) == 200
-                    error_code = response.get('status') if not is_success else None
+        
                 
                 # Store result
                 self.verification_results[server_name] = {
                     'success': is_success,
                     'error': not is_success,
-                    'error_code': error_code
+                    'error_code': 'fail'
                 }
                 
                 # Update counts
@@ -260,7 +273,7 @@ class CreateFromExcelPanel(tk.Frame):
                     success_count += 1
                 else:
                     failure_count += 1
-                    
+
                 # Color the corresponding row in the tree
                 # Find the item with this server name
                 for item_id in self.data_tree.get_children():
