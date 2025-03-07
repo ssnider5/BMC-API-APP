@@ -1,152 +1,11 @@
-# -------------------------------
-# Excel Parser
-# -------------------------------
-import pandas as pd
-from openpyxl import load_workbook
-import numpy as np
-
-class ExcelParser:
-    def __init__(self):
-        self.current_data = None
-        self.current_headers = None
-        self.current_file = None
-    
-    def read_excel(self, file_path, sheet_name=0):
-        """
-        Reads an Excel file and returns headers and data.
-        
-        Args:
-            file_path (str): Path to the Excel file
-            sheet_name (str or int): Sheet name or index to read (default is first sheet)
-            
-        Returns:
-            tuple: (headers, data) where headers is a list of column names and 
-                  data is a list of tuples representing rows
-        """
-        self.current_file = file_path
-        
-        try:
-            # Read Excel file
-            df = pd.read_excel(file_path, sheet_name=sheet_name)
-            
-            # Clean up data
-            df = self._clean_dataframe(df)
-            
-            # Store for later use
-            self.current_data = df
-            self.current_headers = df.columns.tolist()
-            
-            # Convert to format suitable for treeview
-            data_rows = [tuple(row) for row in df.values]
-            
-            return self.current_headers, data_rows
-        
-        except Exception as e:
-            print(f"Error reading Excel file: {str(e)}")
-            raise
-    
-    def _clean_dataframe(self, df):
-        """
-        Clean up the dataframe by:
-        1. Removing empty rows and columns
-        2. Converting NaN values to empty strings
-        3. Ensuring column names are strings and unique
-        """
-        # Drop completely empty rows and columns
-        df = df.dropna(how='all').dropna(axis=1, how='all')
-        
-        # Ensure column names are strings and there are no duplicates
-        df.columns = [f"Column {i}" if pd.isna(col) else str(col) for i, col in enumerate(df.columns)]
-        
-        # Handle duplicate column names by adding numbers
-        counts = {}
-        new_columns = []
-        for col in df.columns:
-            if col in counts:
-                counts[col] += 1
-                new_columns.append(f"{col}_{counts[col]}")
-            else:
-                counts[col] = 0
-                new_columns.append(col)
-        df.columns = new_columns
-        
-        # Replace NaN with empty strings
-        df = df.fillna('')
-        
-        return df
-    
-    def get_sheet_names(self, file_path):
-        """
-        Returns a list of sheet names in the Excel file
-        """
-        try:
-            workbook = load_workbook(file_path, read_only=True)
-            return workbook.sheetnames
-        except Exception as e:
-            print(f"Error getting sheet names: {str(e)}")
-            raise
-    
-    def get_json_data(self):
-        """
-        Returns the current data as a JSON-serializable list of dictionaries
-        """
-        if self.current_data is None:
-            return None
-        
-        # Convert DataFrame to list of dicts, handling non-serializable objects like numpy numbers
-        records = self.current_data.to_dict('records')
-        
-        # Ensure all values are JSON-serializable
-        for record in records:
-            for key, value in record.items():
-                if isinstance(value, np.integer):
-                    record[key] = int(value)
-                elif isinstance(value, np.floating):
-                    record[key] = float(value)
-                elif isinstance(value, np.ndarray):
-                    record[key] = value.tolist()
-        
-        return records
-    
-    def save_to_excel(self, file_path, data=None, headers=None):
-        """
-        Save data to an Excel file
-        
-        Args:
-            file_path (str): Path to save the Excel file
-            data (list or DataFrame): Data to save. If None, uses current_data
-            headers (list): Column headers. If None, uses current_headers
-        """
-        try:
-            if data is not None:
-                if isinstance(data, pd.DataFrame):
-                    df = data
-                else:
-                    # Convert list of tuples/lists to DataFrame
-                    df = pd.DataFrame(data, columns=headers or self.current_headers)
-            else:
-                df = self.current_data
-            
-            if df is not None:
-                df.to_excel(file_path, index=False)
-                return True
-            else:
-                raise ValueError("No data to save")
-        
-        except Exception as e:
-            print(f"Error saving to Excel: {str(e)}")
-            raise
-
-# -------------------------------
-# Create From Excel Panel
-# -------------------------------
 class CreateFromExcelPanel(tk.Frame):
-    def __init__(self, master, mvcm_instance, excel_parser, **kwargs):
+    def __init__(self, master, excel_parser, mvcm_inst, **kwargs):
         super().__init__(master, **kwargs)
-        self.mvcm = mvcm_instance
         self.excel_parser = excel_parser
         self.selected_file = None
         self.create_widgets()
+        self.mvcm_inst = mvcm_inst
+        self.created_servers = []  # To store names of created servers
 
     def create_widgets(self):
         # Main container
@@ -182,8 +41,8 @@ class CreateFromExcelPanel(tk.Frame):
         actions_frame.pack(fill=tk.X, pady=(10, 0))
         
         # Import button (initially disabled)
-        self.import_button = ttk.Button(actions_frame, text="Import Data", command=self.import_data, state='disabled')
-        self.import_button.pack(side=tk.RIGHT, padx=5)
+        self.import_button = ttk.Button(actions_frame, text="Create CCS servers", command=self.import_data, state='disabled')
+        self.import_button.pack(side=tk.BOTTOM, pady=10)
 
     def browse_file(self):
         file_path = filedialog.askopenfilename(
@@ -235,7 +94,7 @@ class CreateFromExcelPanel(tk.Frame):
             
         except Exception as e:
             error_label = ttk.Label(self.table_frame, text=f"Error loading Excel file: {str(e)}", foreground="red")
-            error_label.pack(expand=True)
+            error_label.pack(expand=True)   
             self.import_button.config(state='disabled')
     
     def import_data(self):
@@ -243,7 +102,56 @@ class CreateFromExcelPanel(tk.Frame):
         # For example, sending the data to an API or processing it further
         try:
             # Example implementation:
-            # result = self.mvcm.post("/import-excel-data", json=self.excel_parser.get_json_data())
+            json_data = self.excel_parser.get_json_data()
+            result = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
+            
+            # Store created server names if available
+            if hasattr(result, 'servers'):
+                self.created_servers = [server.get('name', '') for server in result.servers]
+            elif isinstance(result, list):
+                self.created_servers = [server.get('name', '') for server in result if isinstance(server, dict)]
+            elif isinstance(result, dict) and 'servers' in result:
+                self.created_servers = [server.get('name', '') for server in result['servers']]
+            
             messagebox.showinfo("Import Successful", "Data has been successfully imported!")
+            
+            # Show verification prompt after successful import
+            self.show_verification_prompt()
+            
         except Exception as e:
             messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
+    
+    def show_verification_prompt(self):
+        """Shows a popup asking if the user wants to verify the servers"""
+        verify = messagebox.askyesno("Verify Servers", "Would you like to verify the server(s)?")
+        if verify:
+            self.verify_import()
+    
+    def verify_import(self):
+        """Verifies the imported servers by sending POST requests to start them"""
+        if not self.created_servers:
+            messagebox.showinfo("Verification", "No servers to verify.")
+            return
+        
+        results = []
+        for server_name in self.created_servers:
+            if not server_name:
+                continue
+                
+            try:
+                # Send POST request to start the server
+                endpoint = f"/api/ccs/servers/{server_name}/operations/start"
+                response = self.mvcm_inst.post(endpoint)
+                
+                # Add result to the list
+                status = "Success" if response.get('status', 0) == 200 else "Failed"
+                results.append(f"{server_name}: {status}")
+            except Exception as e:
+                results.append(f"{server_name}: Error - {str(e)}")
+        
+        # Show verification results
+        if results:
+            result_message = "Verification Results:\n" + "\n".join(results)
+            messagebox.showinfo("Verification Results", result_message)
+        else:
+            messagebox.showinfo("Verification", "No servers were verified.")
