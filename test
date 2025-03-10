@@ -1,3 +1,9 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import queue
+
 class CreateFromExcelPanel(tk.Frame):
     def __init__(self, master, excel_parser, mvcm_inst, **kwargs):
         super().__init__(master, **kwargs)
@@ -9,6 +15,9 @@ class CreateFromExcelPanel(tk.Frame):
         self.verification_results = {}  # Store verification results for each server
         self.notification_showing = False
         self.colors_defined = False  # Track if colors have been defined
+        
+        # This will map server_name -> Treeview item ID for quick color updates
+        self.server_item_map = {}
 
     def create_widgets(self):
         # Main container
@@ -126,8 +135,14 @@ class CreateFromExcelPanel(tk.Frame):
                 self.data_tree.column(header, width=100)
             
             # Insert data rows
+            self.server_item_map = {}  # Reset mapping
             for row in data:
-                self.data_tree.insert("", tk.END, values=row)
+                item_id = self.data_tree.insert("", tk.END, values=row)
+                # For convenience, assume the server name is in row[0] or row[3], etc.
+                # Adjust as needed:
+                if len(row) > 0:
+                    server_name = row[0]  # or row[3] if that’s where server is
+                    self.server_item_map[server_name] = item_id
             
             # Add scrollbars
             y_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.VERTICAL, command=self.data_tree.yview)
@@ -137,11 +152,8 @@ class CreateFromExcelPanel(tk.Frame):
             self.data_tree.configure(xscrollcommand=x_scrollbar.set)
             
             # Pack everything in the right order
-            # Pack x_scrollbar first at the bottom
             x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-            # Pack y_scrollbar at the right
             y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            # Pack the treeview last, filling the remaining space
             self.data_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             
             # Bind selection event to show details
@@ -161,13 +173,12 @@ class CreateFromExcelPanel(tk.Frame):
         if not selected_items:
             return
             
-        # Get server name from the selected row
-        # Assuming the first column contains the server name or an identifier
         item_values = self.data_tree.item(selected_items[0], "values")
         if not item_values:
             return
             
-        server_name = item_values[0]  # Adjust index based on your actual data structure
+        # Adjust index based on your actual data structure
+        server_name = item_values[0]
         
         # Check if we have verification results for this server
         if server_name in self.verification_results:
@@ -176,47 +187,33 @@ class CreateFromExcelPanel(tk.Frame):
                 self.show_notification(f"Error for {server_name}: {result['error_code']}", error=True)
     
     def import_data(self):
-        # This method would be implemented to handle the actual import process
-        # For example, sending the data to an API or processing it further
         try:
-            # Example implementation:
             json_data = self.excel_parser.get_json_data()
             self.created_servers = self.excel_parser.extract_names(json_data)
-            result = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
+            _result = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
             
             messagebox.showinfo("Import Successful", "Data has been successfully imported!")
-            
-            # Show verification prompt after successful import
             self.show_verification_prompt()
             
         except Exception as e:
             messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
-    
+
     def show_verification_prompt(self):
         """Shows a popup asking if the user wants to verify the servers"""
         verify = messagebox.askyesno("Verify Servers", "Would you like to verify the server(s)?")
         if verify:
             self.verify_import()
-    
+
     def verify_import(self):
-        """Verifies the imported servers by sending POST requests to start them"""
+        """Verifies the imported servers by sending POST requests in parallel."""
         if not self.created_servers:
             messagebox.showinfo("Verification", "No servers to verify.")
             return
-        
+
         # Reset verification results
         self.verification_results = {}
-        
-        # Make sure color tags are defined - just in case
-        if not self.colors_defined:
-            self.data_tree.tag_configure('success', background='#90EE90')  # Light green
-            self.data_tree.tag_configure('failure', background='#FFCCCB')  # Light red
-            self.colors_defined = True
-        
-        success_count = 0
-        failure_count = 0
-        
-        # Create a progress bar
+
+        # Create a small progress window that will remain open while threads run
         progress_window = tk.Toplevel(self)
         progress_window.title("Verifying Servers")
         progress_window.geometry("300x100")
@@ -230,114 +227,121 @@ class CreateFromExcelPanel(tk.Frame):
         progress.pack(pady=10)
         progress['maximum'] = len(self.created_servers)
         
-        # Process each server
-        for i, server_name in enumerate(self.created_servers):
-            if not server_name:
-                continue
-            
-            # Update progress
-            progress['value'] = i + 1
-            progress_label.config(text=f"Verifying {server_name}...")
-            progress_window.update()
-                
+        # We’ll use a queue to get results from worker threads
+        result_queue = queue.Queue()
+
+        def verify_one_server(server_name):
+            """
+            This function runs in a worker thread.
+            It returns a dict with all relevant info
+            needed to update the UI.
+            """
             try:
-                # Send POST request to start the server
                 endpoint = f"/api/ccs/servers/{server_name}/operations/start"
-                response = self.mvcm_inst.post(endpoint)
+                _response = self.mvcm_inst.post(endpoint)  # start the server
 
                 r = self.mvcm_inst.getlog(server_name)
                 log_text = r.text
-
-                # Split the log text into lines
                 lines = log_text.splitlines()
 
                 is_success = False
-                # Check if there are at least three lines
                 if len(lines) >= 3:
-                    # Get the third-to-last line
                     third_to_last_line = lines[-3]
-                    
-                    # Check if the third-to-last line contains "Error exit"
                     if "Error exit" in third_to_last_line:
                         is_success = False
-                        print("The third-to-last line contains 'Error exit'.")
                     else:
                         is_success = True
-                        print("The third-to-last line does not contain 'Error exit'.")
-                else:
-                    print("The log does not have enough lines.")
-                
-                # Store result
-                self.verification_results[server_name] = {
+
+                return {
+                    'server_name': server_name,
                     'success': is_success,
                     'error': not is_success,
-                    'error_code': 'fail'
+                    'error_code': 'fail' if not is_success else ''
                 }
-                
-                # Update counts
-                if is_success:
-                    success_count += 1
-                else:
-                    failure_count += 1
-
-                # Color the corresponding row in the tree
-                # Find the item with this server name
-                for item_id in self.data_tree.get_children():
-                    item_values = self.data_tree.item(item_id, "values")
-                    if item_values and server_name in str(item_values[3]):  # Match on first column
-                        # First remove any existing tags
-                        current_tags = list(self.data_tree.item(item_id, "tags"))
-                        if 'success' in current_tags:
-                            current_tags.remove('success')
-                        if 'failure' in current_tags:
-                            current_tags.remove('failure')
-
-                            
-                        # Add the appropriate tag
-                        new_tag = 'success' if is_success else 'failure'
-                        current_tags.append(new_tag)
-                              
-                        # Update the item with the new tags
-                        self.data_tree.item(item_id, tags=current_tags)
-                        
-                        # Force a refresh of the row's appearance
-                        self.update_idletasks()
-                        break
-                        
             except Exception as e:
-                # Handle exception
-                self.verification_results[server_name] = {
+                return {
+                    'server_name': server_name,
                     'success': False,
                     'error': True,
                     'error_code': str(e)
                 }
-                failure_count += 1
-                
-                # Color the row red
-                for item_id in self.data_tree.get_children():
-                    item_values = self.data_tree.item(item_id, "values")
-                    if item_values and server_name in str(item_values[3]):
-                        # First remove any existing tags
-                        current_tags = list(self.data_tree.item(item_id, "tags"))
-                        if 'success' in current_tags:
-                            current_tags.remove('success')
-                        if 'failure' in current_tags:
-                            current_tags.remove('failure')
-                            
-                        # Add the failure tag
-                        current_tags.append('failure')
-                        
-                        # Update the item
-                        self.data_tree.item(item_id, tags=current_tags)
-                        
-                        # Force a refresh
-                        self.update_idletasks()
-                        break
-        
-        # Close progress window
-        progress_window.destroy()
-        
-        # Show summary
-        messagebox.showinfo("Verification Complete", 
-                           f"Verification complete.\nSuccessful: {success_count}\nFailed: {failure_count}\n\n"
-                           f"Select a server in the table for error details.")
+
+        def worker_done(future):
+            """
+            Called when a single future completes (in the main thread).
+            We pull the result, push it into the queue for UI updates.
+            """
+            res = future.result()
+            result_queue.put(res)
+
+        # Create a thread pool
+        executor = ThreadPoolExecutor(max_workers=5)
+
+        # Submit tasks
+        futures = []
+        for server_name in self.created_servers:
+            # skip empty
+            if not server_name:
+                continue
+            future = executor.submit(verify_one_server, server_name)
+            future.add_done_callback(worker_done)
+            futures.append(future)
+
+        # Track how many servers have finished
+        finished_count = [0]  # put in a list so we can modify inside the function
+
+        def process_results():
+            """
+            Periodically called in the main thread (via self.after).
+            We check for completed results in the queue and update the GUI.
+            """
+            while not result_queue.empty():
+                res = result_queue.get_nowait()
+                server_name = res['server_name']
+                self.verification_results[server_name] = res
+
+                # Bump progress
+                finished_count[0] += 1
+                progress['value'] = finished_count[0]
+                progress_label.config(text=f"Verifying {server_name}...")
+
+                # Update the corresponding row color
+                # Make sure color tags are defined
+                if not self.colors_defined:
+                    self.data_tree.tag_configure('success', background='#90EE90')
+                    self.data_tree.tag_configure('failure', background='#FFCCCB')
+                    self.colors_defined = True
+
+                if server_name in self.server_item_map:
+                    item_id = self.server_item_map[server_name]
+                    # Clear existing tags
+                    current_tags = list(self.data_tree.item(item_id, "tags"))
+                    if 'success' in current_tags:
+                        current_tags.remove('success')
+                    if 'failure' in current_tags:
+                        current_tags.remove('failure')
+                    # Add success/failure
+                    new_tag = 'success' if res['success'] else 'failure'
+                    current_tags.append(new_tag)
+                    self.data_tree.item(item_id, tags=current_tags)
+
+            # If all futures are done, finalize. Otherwise, check again.
+            if all(f.done() for f in futures):
+                # Close the executor
+                executor.shutdown(wait=False)
+                # Close progress window
+                progress_window.destroy()
+                # Show summary
+                success_count = sum(1 for v in self.verification_results.values() if v['success'])
+                failure_count = len(self.verification_results) - success_count
+                messagebox.showinfo(
+                    "Verification Complete",
+                    f"Verification complete.\nSuccessful: {success_count}\nFailed: {failure_count}\n\n"
+                    f"Select a server in the table for error details."
+                )
+            else:
+                # Not all done; schedule another check
+                self.after(200, process_results)
+
+        # Start checking results
+        self.after(200, process_results)
