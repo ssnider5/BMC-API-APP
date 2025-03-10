@@ -284,18 +284,19 @@ class CreateFromExcelPanel(tk.Frame):
                 # Find the item with this server name
                 for item_id in self.data_tree.get_children():
                     item_values = self.data_tree.item(item_id, "values")
-                    if item_values and server_name in str(item_values[0]):  # Match on first column
+                    if item_values and server_name in str(item_values[3]):  # Match on first column
                         # First remove any existing tags
                         current_tags = list(self.data_tree.item(item_id, "tags"))
                         if 'success' in current_tags:
                             current_tags.remove('success')
                         if 'failure' in current_tags:
                             current_tags.remove('failure')
+
                             
                         # Add the appropriate tag
                         new_tag = 'success' if is_success else 'failure'
                         current_tags.append(new_tag)
-                        
+                              
                         # Update the item with the new tags
                         self.data_tree.item(item_id, tags=current_tags)
                         
@@ -315,7 +316,7 @@ class CreateFromExcelPanel(tk.Frame):
                 # Color the row red
                 for item_id in self.data_tree.get_children():
                     item_values = self.data_tree.item(item_id, "values")
-                    if item_values and server_name in str(item_values[0]):
+                    if item_values and server_name in str(item_values[3]):
                         # First remove any existing tags
                         current_tags = list(self.data_tree.item(item_id, "tags"))
                         if 'success' in current_tags:
