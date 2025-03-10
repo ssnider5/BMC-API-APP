@@ -138,6 +138,22 @@ class Mvcm:
         self.trace('content: ' + str(r.content))
         self.trace('=======================================================================')
         return r
+    
+    def getlog(self, server_name):
+
+        headers = {}
+        if self.apiSession != None:
+            headers['x-api-session'] = self.apiSession 
+        
+
+        self.traceheaders(headers)
+
+        #self.trace('cookie is ' + str(self.cookies))
+        fullurl = f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/download/1/{server_name}/{server_name}.log'
+        #self.trace(f'URL: {fullurl}')
+        r = requests.get(url=fullurl ,headers = headers, verify=False, cookies=self.cookies)
+        self.cookies.update(r.cookies)
+        return r
     #
     # Performs an HTTP PUT which updates the entity
     #
@@ -168,7 +184,7 @@ class Mvcm:
     #
     # Performs an HTTP POST, which creates an entity
     #
-    def post(self, path, content):
+    def post(self, path, content=None):
         headers = {}
         if self.apiSession is not None:  # Changed to match postbinary's check
             headers['x-api-session'] = self.apiSession

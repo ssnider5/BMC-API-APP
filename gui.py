@@ -411,6 +411,10 @@ class CreateFromExcelPanel(tk.Frame):
         self.selected_file = None
         self.create_widgets()
         self.mvcm_inst = mvcm_inst
+        self.created_servers = []  # To store names of created servers
+        self.verification_results = {}  # Store verification results for each server
+        self.notification_showing = False
+        self.colors_defined = False  # Track if colors have been defined
 
     def create_widgets(self):
         # Main container
@@ -448,6 +452,50 @@ class CreateFromExcelPanel(tk.Frame):
         # Import button (initially disabled)
         self.import_button = ttk.Button(actions_frame, text="Create CCS servers", command=self.import_data, state='disabled')
         self.import_button.pack(side=tk.BOTTOM, pady=10)
+        
+        # Status bar for notifications
+        self.status_frame = ttk.Frame(self)
+        self.status_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        # Create notification widget (initially hidden)
+        self.notification_frame = ttk.Frame(self.master, relief="raised", borderwidth=2)
+        self.notification_label = ttk.Label(self.notification_frame, text="", wraplength=300)
+        self.notification_label.pack(padx=10, pady=10)
+        self.close_button = ttk.Button(self.notification_frame, text="×", width=2, 
+                                       command=self.hide_notification)
+        self.close_button.pack(side=tk.RIGHT, anchor=tk.NE, padx=5, pady=5)
+
+    def hide_notification(self):
+        """Hide the notification popup"""
+        self.notification_frame.place_forget()
+        self.notification_showing = False
+
+    def show_notification(self, message, error=False):
+        """Show a notification popup in the bottom right corner"""
+        # Configure notification appearance
+        if error:
+            self.notification_label.config(foreground="red")
+        else:
+            self.notification_label.config(foreground="black")
+        
+        # Update message
+        self.notification_label.config(text=message)
+        
+        # Calculate position (bottom right)
+        window_width = self.master.winfo_width()
+        window_height = self.master.winfo_height()
+        notification_width = 320  # Fixed width for notification
+        notification_height = 100  # Approximate height
+        
+        x_position = window_width - notification_width - 20
+        y_position = window_height - notification_height - 20
+        
+        # Show notification
+        self.notification_frame.place(x=x_position, y=y_position, width=notification_width)
+        self.notification_showing = True
+        
+        # Auto-hide after 5 seconds
+        self.after(5000, self.hide_notification)
 
     def browse_file(self):
         file_path = filedialog.askopenfilename(
@@ -472,6 +520,11 @@ class CreateFromExcelPanel(tk.Frame):
             # Create new treeview for the data
             self.data_tree = ttk.Treeview(self.table_frame, columns=headers, show='headings')
             
+            # Define tag colors immediately after creating the treeview
+            self.data_tree.tag_configure('success', background='#90EE90')  # Light green
+            self.data_tree.tag_configure('failure', background='#FFCCCB')  # Light red
+            self.colors_defined = True
+            
             # Set column headings
             for header in headers:
                 self.data_tree.heading(header, text=header)
@@ -489,10 +542,16 @@ class CreateFromExcelPanel(tk.Frame):
             x_scrollbar = ttk.Scrollbar(self.table_frame, orient=tk.HORIZONTAL, command=self.data_tree.xview)
             self.data_tree.configure(xscrollcommand=x_scrollbar.set)
             
-            # Pack everything
-            self.data_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            # Pack everything in the right order
+            # Pack x_scrollbar first at the bottom
             x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+            # Pack y_scrollbar at the right
+            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            # Pack the treeview last, filling the remaining space
+            self.data_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+            # Bind selection event to show details
+            self.data_tree.bind("<<TreeviewSelect>>", self.on_tree_select)
             
             # Enable import button
             self.import_button.config(state='normal')
@@ -502,18 +561,192 @@ class CreateFromExcelPanel(tk.Frame):
             error_label.pack(expand=True)   
             self.import_button.config(state='disabled')
     
+    def on_tree_select(self, event):
+        """Handle selection of a row in the treeview"""
+        selected_items = self.data_tree.selection()
+        if not selected_items:
+            return
+            
+        # Get server name from the selected row
+        # Assuming the first column contains the server name or an identifier
+        item_values = self.data_tree.item(selected_items[0], "values")
+        if not item_values:
+            return
+            
+        server_name = item_values[0]  # Adjust index based on your actual data structure
+        
+        # Check if we have verification results for this server
+        if server_name in self.verification_results:
+            result = self.verification_results[server_name]
+            if result.get('error'):
+                self.show_notification(f"Error for {server_name}: {result['error_code']}", error=True)
+    
     def import_data(self):
         # This method would be implemented to handle the actual import process
         # For example, sending the data to an API or processing it further
         try:
             # Example implementation:
-            json = self.excel_parser.get_json_data()
-            self.excel_parser.create_ccs_server(self.mvcm_inst, json)
-            # result = self.mvcm.post("/import-excel-data", json=self.excel_parser.get_json_data())
+            json_data = self.excel_parser.get_json_data()
+            self.created_servers = self.excel_parser.extract_names(json_data)
+            result = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
+            
             messagebox.showinfo("Import Successful", "Data has been successfully imported!")
+            
+            # Show verification prompt after successful import
+            self.show_verification_prompt()
+            
         except Exception as e:
             messagebox.showerror("Import Failed", f"Failed to import data: {str(e)}")
+    
+    def show_verification_prompt(self):
+        """Shows a popup asking if the user wants to verify the servers"""
+        verify = messagebox.askyesno("Verify Servers", "Would you like to verify the server(s)?")
+        if verify:
+            self.verify_import()
+    
+    def verify_import(self):
+        """Verifies the imported servers by sending POST requests to start them"""
+        if not self.created_servers:
+            messagebox.showinfo("Verification", "No servers to verify.")
+            return
+        
+        # Reset verification results
+        self.verification_results = {}
+        
+        # Make sure color tags are defined - just in case
+        if not self.colors_defined:
+            self.data_tree.tag_configure('success', background='#90EE90')  # Light green
+            self.data_tree.tag_configure('failure', background='#FFCCCB')  # Light red
+            self.colors_defined = True
+        
+        success_count = 0
+        failure_count = 0
+        
+        # Create a progress bar
+        progress_window = tk.Toplevel(self)
+        progress_window.title("Verifying Servers")
+        progress_window.geometry("300x100")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        progress_label = ttk.Label(progress_window, text="Verifying servers...")
+        progress_label.pack(pady=10)
+        
+        progress = ttk.Progressbar(progress_window, length=250, mode='determinate')
+        progress.pack(pady=10)
+        progress['maximum'] = len(self.created_servers)
+        
+        # Process each server
+        for i, server_name in enumerate(self.created_servers):
+            if not server_name:
+                continue
+            
+            # Update progress
+            progress['value'] = i + 1
+            progress_label.config(text=f"Verifying {server_name}...")
+            progress_window.update()
+                
+            try:
+                # Send POST request to start the server
+                endpoint = f"/api/ccs/servers/{server_name}/operations/start"
+                response = self.mvcm_inst.post(endpoint)
 
+                r = self.mvcm_inst.getlog(server_name)
+                log_text = r.text
+
+                # Split the log text into lines
+                lines = log_text.splitlines()
+
+                is_success = False
+                # Check if there are at least three lines
+                if len(lines) >= 3:
+                    # Get the third-to-last line
+                    third_to_last_line = lines[-3]
+                    
+                    # Check if the third-to-last line contains "Error exit"
+                    if "Error exit" in third_to_last_line:
+                        is_success = False
+                        print("The third-to-last line contains 'Error exit'.")
+                    else:
+                        is_success = True
+                        print("The third-to-last line does not contain 'Error exit'.")
+                else:
+                    print("The log does not have enough lines.")
+                
+                # Store result
+                self.verification_results[server_name] = {
+                    'success': is_success,
+                    'error': not is_success,
+                    'error_code': 'fail'
+                }
+                
+                # Update counts
+                if is_success:
+                    success_count += 1
+                else:
+                    failure_count += 1
+
+                # Color the corresponding row in the tree
+                # Find the item with this server name
+                for item_id in self.data_tree.get_children():
+                    item_values = self.data_tree.item(item_id, "values")
+                    if item_values and server_name in str(item_values[3]):  # Match on first column
+                        # First remove any existing tags
+                        current_tags = list(self.data_tree.item(item_id, "tags"))
+                        if 'success' in current_tags:
+                            current_tags.remove('success')
+                        if 'failure' in current_tags:
+                            current_tags.remove('failure')
+
+                            
+                        # Add the appropriate tag
+                        new_tag = 'success' if is_success else 'failure'
+                        current_tags.append(new_tag)
+                              
+                        # Update the item with the new tags
+                        self.data_tree.item(item_id, tags=current_tags)
+                        
+                        # Force a refresh of the row's appearance
+                        self.update_idletasks()
+                        break
+                        
+            except Exception as e:
+                # Handle exception
+                self.verification_results[server_name] = {
+                    'success': False,
+                    'error': True,
+                    'error_code': str(e)
+                }
+                failure_count += 1
+                
+                # Color the row red
+                for item_id in self.data_tree.get_children():
+                    item_values = self.data_tree.item(item_id, "values")
+                    if item_values and server_name in str(item_values[3]):
+                        # First remove any existing tags
+                        current_tags = list(self.data_tree.item(item_id, "tags"))
+                        if 'success' in current_tags:
+                            current_tags.remove('success')
+                        if 'failure' in current_tags:
+                            current_tags.remove('failure')
+                            
+                        # Add the failure tag
+                        current_tags.append('failure')
+                        
+                        # Update the item
+                        self.data_tree.item(item_id, tags=current_tags)
+                        
+                        # Force a refresh
+                        self.update_idletasks()
+                        break
+        
+        # Close progress window
+        progress_window.destroy()
+        
+        # Show summary
+        messagebox.showinfo("Verification Complete", 
+                           f"Verification complete.\nSuccessful: {success_count}\nFailed: {failure_count}\n\n"
+                           f"Select a server in the table for error details.")
 
 # -------------------------------
 # Create Console From Excel Panel

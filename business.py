@@ -28,7 +28,7 @@ class BusinessController:
     def get_saved_configurations(self):
         r = self.mvcm.get("/saved-configurations", "application/json")
         return r.json() if r.ok else []
-
+    
     def download_configuration(self, config_name, download_location):
         r = self.mvcm.getzip('/saved-configurations/' + config_name, 'zip')
         if r.status_code == 200:
@@ -232,6 +232,19 @@ class ExcelParser:
                     record[key] = value.tolist()
         
         return records
+    
+    def extract_names(self, json_list):
+        """
+        Iterates through each JSON object in the list, extracts the 'name' value,
+        and returns a list of these names.
+        """
+        names = []
+        for json_obj in json_list:
+            name = json_obj.get('name')
+            if name:
+                names.append(name)
+        return names
+
 
     
     def save_to_excel(self, file_path, data=None, headers=None):
@@ -311,7 +324,6 @@ class ExcelParser:
                 
                 # Pass the modified JSON object into the post function
                 response = mvcm_inst.post(url, json_obj)
-                print(printResponseError(response))
                 # Check if the response is OK
                 if not response.ok:
                     print(f"Failed to create CCS session {sessionName} for {serverName}")
