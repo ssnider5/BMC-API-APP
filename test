@@ -1,63 +1,12 @@
-    def testCode(self, specified_date=None):
-        # Initialize date to None if not specified
-        date = specified_date
-        
-        # Dictionary to store log files
-        log_files = {}
-        
-        # Get all logs (package list)
-        base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
-        resp = self.controller.mvcm.getalllogs(base_url)
-        
-        # Parse the response - handle both cases
-        if hasattr(resp, 'text'):
-            packages = json.loads(resp.text)
-        else:
-            # Assuming resp is already the parsed JSON
-            packages = resp
-        
-        # Determine the number of packages
-        total_packages = len(packages)
-        
-        # If date is None, set it to today's date in the correct format
-        if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Iterate through each package
-        for iteration in range(1, total_packages + 1):
-            # Get details for specific package
-            package_url = f'{base_url}/{iteration}'
-            package_resp = self.controller.mvcm.getalllogs(package_url)
-            
-            # Parse the package response
-            if hasattr(package_resp, 'text'):
-                package_data = json.loads(package_resp.text)
-            else:
-                # Assuming package_resp is already the parsed JSON
-                package_data = package_resp
-            
-            # Iterate through each log in the package
-            for log in package_data:
-                # Check if log is a dictionary
-                if isinstance(log, dict):
-                    name = log.get('name')
-                    parent = log.get('parent')
-                    date_modified = log.get('dateModified')  # Already in format '2025-03-11'
-                    
-                    # Check if we have valid data and the log was modified on or after the specified date
-                    if name and parent and date_modified and date_modified >= date:
-                        # Download the specific log file
-                        download_url = f'{base_url}/download/{iteration}/{parent}/{name}'
-                        download_resp = self.controller.mvcm.getalllogs(download_url)
-                        
-                        # Get the log content
-                        if hasattr(download_resp, 'text'):
-                            log_content = download_resp.text
-                        else:
-                            # If download_resp is already the content
-                            log_content = download_resp
-                        
-                        # Store the log content in the dictionary
-                        log_files[name] = log_content
-        
-        return log_files
+package_date = {'name': 'Web Server', 'type': 4, 'logFiles': [{'name': 'catalina.2025-02-14.log', 'dateModified': '2025-02-14', 'size': 26, 'parent': 'logs', 'sequenceId': 4, 'deleteAllowed': False}, {'name': 'catalina.2025-02-19.log', 'dateModified': '2025-02-19', 'size': 4, 'parent': 'logs', 'sequenceId': 7, 'deleteAllowed': False}, {'name': 'catalina.2025-02-20.log', 'dateModified': '2025-02-20', 'size': 30, 'parent': 'logs', 'sequenceId': 8, 'deleteAllowed': False}, {'name': 'catalina.2025-02-25.log', 'dateModified': '2025-02-25', 'size': 4, 'parent': 'logs', 'sequenceId': 11, 'deleteAllowed': False}, {'name': 'catalina.2025-02-26.log', 'dateModified': '2025-02-26', 'size': 21, 'parent': 'logs', 'sequenceId': 12, 'deleteAllowed': False}, {'name': 'catalina.2025-02-27.log', 'dateModified': '2025-02-27', 'size': 35, 'parent': 'logs', 'sequenceId': 14, 'deleteAllowed': False}, {'name': 'catalina.2025-02-28.log', 'dateModified': '2025-02-28', 'size': 32, 'parent': 'logs', 'sequenceId': 20, 'deleteAllowed': False}, {'name': 'catalina.2025-03-01.log', 'dateModified': '2025-03-01', 'size': 1, 'parent': 'logs', 'sequenceId': 22, 'deleteAllowed': False}, {'name': 'catalina.2025-03-03.log', 'dateModified': '2025-03-03', 'size': 17, 'parent': 'logs', 'sequenceId': 23, 'deleteAllowed': False}, {'name': 'catalina.2025-03-04.log', 'dateModified': '2025-03-04', 'size': 1, 'parent': 'logs', 'sequenceId': 24, 'deleteAllowed': False}, {'name': 'catalina.2025-03-05.log', 'dateModified': '2025-03-05', 'size': 35, 'parent': 'logs', 'sequenceId': 25, 'deleteAllowed': False}, {'name': 'catalina.2025-03-06.log', 'dateModified': '2025-03-06', 'size': 28, 'parent': 'logs', 'sequenceId': 28, 'deleteAllowed': False}, {'name': 'catalina.2025-03-07.log', 'dateModified': '2025-03-07', 'size': 125, 'parent': 'logs', 'sequenceId': 29, 'deleteAllowed': False}, {'name': 'catalina.2025-03-10.log', 'dateModified': '2025-03-10', 'size': 207, 'parent': 'logs', 'sequenceId': 33, 'deleteAllowed': False}, {'name': 'catalina.2025-03-11.log', 'dateModified': '2025-03-11', 'size': 18, 'parent': 'logs', 'sequenceId': 34, 'deleteAllowed': False}, {'name': 'catalina.out', 'dateModified': '2025-03-11', 'size': 1960, 'parent': 'logs', 'sequenceId': 3, 'deleteAllowed': False}, {'name': 'localhost.2025-02-14.log', 'dateModified': '2025-02-14', 'size': 1, 'parent': 'logs', 'sequenceId': 5, 'deleteAllowed': False}, {'name': 'localhost.2025-02-20.log', 'dateModified': '2025-02-20', 'size': 1, 'parent': 'logs', 'sequenceId': 9, 'deleteAllowed': False}, {'name': 'localhost.2025-03-05.log', 'dateModified': '2025-03-05', 'size': 1, 'parent': 'logs', 'sequenceId': 27, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.14@20:47:18.log', 'dateModified': '2025-02-14', 'size': 592, 'parent': 'logs', 'sequenceId': 1, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.14@20_47_32.log', 'dateModified': '2025-02-14', 'size': 592, 'parent': 'logs', 'sequenceId': 2, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.14@20_49_17.log', 'dateModified': '2025-02-14', 'size': 592, 'parent': 'logs', 'sequenceId': 6, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.20@17_12_39.log', 'dateModified': '2025-02-20', 'size': 592, 'parent': 'logs', 'sequenceId': 10, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.26@21_43_37.log', 'dateModified': '2025-02-26', 'size': 644, 'parent': 'logs', 'sequenceId': 13, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.27@15_30_58.log', 'dateModified': '2025-02-27', 'size': 644, 'parent': 'logs', 'sequenceId': 15, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.27@15_31_31.log', 'dateModified': '2025-02-27', 'size': 644, 'parent': 'logs', 'sequenceId': 16, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.27@16_43_25.log', 'dateModified': '2025-02-27', 'size': 644, 'parent': 'logs', 'sequenceId': 17, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.27@17_04_38.log', 'dateModified': '2025-02-27', 'size': 644, 'parent': 'logs', 'sequenceId': 18, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.27@20_51_31.log', 'dateModified': '2025-02-27', 'size': 644, 'parent': 'logs', 'sequenceId': 19, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.02.28@20_58_36.log', 'dateModified': '2025-02-28', 'size': 644, 'parent': 'logs', 'sequenceId': 21, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.03.05@18_05_25.log', 'dateModified': '2025-03-05', 'size': 651, 'parent': 'logs', 'sequenceId': 26, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.03.07@15_16_33.log', 'dateModified': '2025-03-07', 'size': 644, 'parent': 'logs', 'sequenceId': 30, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.03.07@16_21_11.log', 'dateModified': '2025-03-07', 'size': 644, 'parent': 'logs', 'sequenceId': 31, 'deleteAllowed': False}, {'name': 'updateEMSdb-25.03.07@16_29_15.log', 'dateModified': '2025-03-07', 'size': 644, 'parent': 'logs', 'sequenceId': 32, 'deleteAllowed': False}]}
+log = name
+log = type
+log = logFiles
+package_date = {'name': 'License Server', 'type': 5, 'logFiles': [{'name': 'ioclm.log', 'dateModified': '2024-06-13', 'size': 12, 'parent': 'licensemanager', 'sequenceId': 1, 'deleteAllowed': False}, {'name': 'server.0.log', 'dateModified': '2025-03-11', 'size': 446, 'parent': 'licensemanager', 'sequenceId': 2, 'deleteAllowed': False}]}
+log = name
+log = type
+log = logFiles
+package_date = {'name': 'Service Manager', 'type': 6, 'logFiles': [{'name': 'iocccssm.out.log', 'dateModified': '2025-03-07', 'size': 1, 'parent': 'servicemanager', 'sequenceId': 1, 'deleteAllowed': False}, {'name': 'iocsm_0.log', 'dateModified': '2024-06-13', 'size': 176, 'parent': 'servicemanager', 'sequenceId': 2, 'deleteAllowed': False}, {'name': 'server.0.log', 'dateModified': '2025-03-11', 'size': 3372, 'parent': 'servicemanager', 'sequenceId': 10, 'deleteAllowed': False}, {'name': 'server.1.log', 'dateModified': '2024-10-24', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 3, 'deleteAllowed': False}, {'name': 'server.2.log', 'dateModified': '2024-10-24', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 4, 'deleteAllowed': False}, {'name': 'server.3.log', 'dateModified': '2024-10-25', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 5, 'deleteAllowed': False}, {'name': 'server.4.log', 'dateModified': '2024-10-25', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 6, 'deleteAllowed': False}, {'name': 'server.5.log', 'dateModified': '2024-10-25', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 7, 'deleteAllowed': False}, {'name': 'server.6.log', 'dateModified': '2024-10-25', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 8, 'deleteAllowed': False}, {'name': 'server.7.log', 'dateModified': '2024-10-26', 'size': 10240, 'parent': 'servicemanager', 'sequenceId': 9, 'deleteAllowed': False}]}
+log = name
+log = type
+log = logFiles
