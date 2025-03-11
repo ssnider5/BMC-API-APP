@@ -1,8 +1,3 @@
-import json
-from datetime import datetime
-import tkinter as tk
-from tkinter import ttk
-
 class TestCode(tk.Frame):
     def __init__(self, master, controller, username, password, servers, **kwargs):
         super().__init__(master, **kwargs)
@@ -46,7 +41,6 @@ class TestCode(tk.Frame):
         
         # Dictionary to store log files with structure: { log_name: {'type': log_type, 'content': log_content} }
         log_files = {}
-        
         base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
         resp = self.controller.mvcm.getalllogs(base_url)
         
@@ -69,7 +63,7 @@ class TestCode(tk.Frame):
                 # Only process logs modified on or after the given date
                 if date_modified and date_modified >= date:
                     # Construct the download URL based on whether a parent exists
-                    if parent:
+                    if parent and not (name.startswith('server.') and name.endswith('.log') and name[7:-4].isdigit()) and not (name.startswith('catalina.')):
                         download_url = f'{base_url}/download/{i}/{parent}/{name}'
                     else:
                         download_url = f'{base_url}/download/{i}/{name}'
