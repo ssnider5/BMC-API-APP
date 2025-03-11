@@ -1,3 +1,11 @@
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime
+import threading
+import json
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+
 class TestCode(tk.Frame):
     def __init__(self, master, controller, username, password, servers, **kwargs):
         super().__init__(master, **kwargs)
@@ -5,76 +13,141 @@ class TestCode(tk.Frame):
         self.username = username
         self.password = password
         self.servers = servers  # List of tuples: (Environment, Hostname)
-        self.current_action = None
-        self.action_buttons = {}      # To store references to action buttons
-        self.side_panel_buttons = {}  # To store references to side panel buttons
-        # Set default selected server to the first one
         self.selected_server = self.servers[0]
-        self.current_panel_mode = "saved_configurations"  # Default panel mode
-        self.is_panel_expanded = True  # Track if side panel is expanded
-        self.side_panel_width = 200    # Default width of side panel when expanded
 
-        # Create a panel for displaying logs using a Text widget inside a ttk Frame
+        # Create an input frame for date and time filters.
+        self.input_frame = ttk.Frame(self)
+        self.input_frame.pack(pady=10)
+        
+        # Date entry label and field.
+        ttk.Label(self.input_frame, text="Date (YYYY-MM-DD):").grid(row=0, column=0, padx=5, pady=2)
+        self.date_entry = ttk.Entry(self.input_frame)
+        self.date_entry.grid(row=0, column=1, padx=5, pady=2)
+        
+        # Time entry label and field.
+        ttk.Label(self.input_frame, text="Time (HH: or HH:MM):").grid(row=1, column=0, padx=5, pady=2)
+        self.time_entry = ttk.Entry(self.input_frame)
+        self.time_entry.grid(row=1, column=1, padx=5, pady=2)
+        
+        # Button to start log retrieval.
+        self.retrieve_button = ttk.Button(self.input_frame, text="Retrieve Logs", command=self.start_log_retrieval)
+        self.retrieve_button.grid(row=2, column=0, columnspan=2, pady=5)
+
+        # Create a panel for displaying logs.
         self.log_panel = ttk.Frame(self)
         self.log_panel.pack(fill='both', expand=True, padx=10, pady=10)
-
-        # Create the Text widget for log output
+        
+        # Create the Text widget for log output.
         self.text_widget = tk.Text(self.log_panel, wrap='none', font=("Courier", 10))
         self.text_widget.pack(side='left', fill='both', expand=True)
-
-        # Create a vertical scrollbar and connect it to the Text widget
+        
+        # Create a vertical scrollbar and attach it.
         self.v_scrollbar = ttk.Scrollbar(self.log_panel, orient='vertical', command=self.text_widget.yview)
         self.v_scrollbar.pack(side='right', fill='y')
         self.text_widget.configure(yscrollcommand=self.v_scrollbar.set)
-
-        # Optionally, you can create a horizontal scrollbar if needed:
-        # self.h_scrollbar = ttk.Scrollbar(self.log_panel, orient='horizontal', command=self.text_widget.xview)
-        # self.h_scrollbar.pack(side='bottom', fill='x')
-        # self.text_widget.configure(xscrollcommand=self.h_scrollbar.set)
-
-        # Retrieve and display logs
-        self.testCode()
-
-    def testCode(self, specified_date=None):
-        # Use specified date or default to today's date (formatted as YYYY-MM-DD)
-        date = specified_date or datetime.now().strftime('%Y-%m-%d')
+    
+    def start_log_retrieval(self):
+        """Starts a background thread to retrieve logs based on the entered date and time filters."""
+        date_filter = self.date_entry.get().strip()
+        time_filter = self.time_entry.get().strip()
         
-        # Dictionary to store log files with structure: { log_name: {'type': log_type, 'content': log_content} }
+        # If fields are empty, use None so that no filtering is applied.
+        if date_filter == "":
+            date_filter = None
+        if time_filter == "":
+            time_filter = None
+
+        # Start a background thread so the UI remains responsive.
+        retrieval_thread = threading.Thread(target=self.testCode, args=(date_filter, time_filter))
+        retrieval_thread.daemon = True
+        retrieval_thread.start()
+    
+    def download_and_filter_log(self, base_url, package_index, parent, name, time_filter):
+        """
+        Downloads a single log file and applies time filtering if specified.
+        Constructs the download URL based on the presence of a parent.
+        """
+        if parent and not (name.startswith('server.') and name.endswith('.log') and name[7:-4].isdigit()) and not (name.startswith('catalina.')):
+            download_url = f'{base_url}/download/{package_index}/{parent}/{name}'
+        else:
+            download_url = f'{base_url}/download/{package_index}/{name}'
+        
+        download_resp = self.controller.mvcm.getalllogs(download_url)
+        log_content = download_resp.text if hasattr(download_resp, 'text') else download_resp
+        
+        # If a time filter is specified, filter the log lines.
+        if time_filter:
+            filtered_lines = []
+            desired_hour = time_filter.split(":")[0]
+            for line in log_content.splitlines():
+                # Assume a log line begins with a timestamp "YYYY-MM-DD HH:MM:SS"
+                if len(line) >= 13:
+                    log_hour = line[11:13]
+                    if log_hour == desired_hour:
+                        filtered_lines.append(line)
+                else:
+                    filtered_lines.append(line)
+            log_content = "\n".join(filtered_lines)
+        
+        return log_content
+
+    def testCode(self, specified_date=None, specified_time=None):
+        """
+        Retrieve log files from the API with optional date and time filtering.
+        
+        - Only process logs modified on or after the specified_date (if provided).
+        - Uses a thread pool to concurrently download log files.
+        - If a time filter is specified (e.g. "17:" or "17:30"), the log content is filtered to include only lines
+          where the hour matches the specified hour.
+        """
+        # If no date is provided, set a very early date.
+        if specified_date:
+            date_filter = specified_date
+        else:
+            date_filter = "0000-00-00"
+        
+        time_filter = specified_time if specified_time else ""
+        
         log_files = {}
         base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
         resp = self.controller.mvcm.getalllogs(base_url)
-        
-        # Attempt to parse the response as JSON
         try:
             packages = resp.json()
         except Exception:
             packages = json.loads(resp.text)
         
-        # Iterate through each package (assuming package index corresponds to its ID)
-        for i, package in enumerate(packages, 1):
-            log_type = package.get('name', 'Unknown')
-            resp = self.controller.mvcm.getalllogs(f'{base_url}/{i}')
-            log_files_array = resp.json().get('logFiles', [])
-            for log_file in log_files_array:
-                name = log_file.get('name', 'Unnamed Log')
-                parent = log_file.get('parent')
-                date_modified = log_file.get('dateModified')
-                
-                # Only process logs modified on or after the given date
-                if date_modified and date_modified >= date:
-                    # Construct the download URL based on whether a parent exists
-                    if parent and not (name.startswith('server.') and name.endswith('.log') and name[7:-4].isdigit()) and not (name.startswith('catalina.')):
-                        download_url = f'{base_url}/download/{i}/{parent}/{name}'
-                    else:
-                        download_url = f'{base_url}/download/{i}/{name}'
+        # Use ThreadPoolExecutor to parallelize the API calls for downloading logs.
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_log = {}
+            for i, package in enumerate(packages, 1):
+                log_type = package.get('name', 'Unknown')
+                resp = self.controller.mvcm.getalllogs(f'{base_url}/{i}')
+                log_files_array = resp.json().get('logFiles', [])
+                for log_file in log_files_array:
+                    name = log_file.get('name', 'Unnamed Log')
+                    parent = log_file.get('parent')
+                    date_modified = log_file.get('dateModified')
                     
-                    download_resp = self.controller.mvcm.getalllogs(download_url)
-                    log_content = download_resp.text if hasattr(download_resp, 'text') else download_resp
-                    
-                    # Save the log content along with its type
-                    log_files[name] = {'type': log_type, 'content': log_content}
+                    # Only process logs modified on or after the specified date.
+                    if date_modified and date_modified >= date_filter:
+                        # Submit the download task to the thread pool.
+                        future = executor.submit(self.download_and_filter_log, base_url, i, parent, name, time_filter)
+                        future_to_log[future] = (name, log_type)
+            
+            # Collect results as they complete.
+            for future in concurrent.futures.as_completed(future_to_log):
+                name, log_type = future_to_log[future]
+                try:
+                    log_content = future.result()
+                except Exception as exc:
+                    log_content = f"Error retrieving log: {exc}"
+                log_files[name] = {'type': log_type, 'content': log_content}
         
-        # Clear the Text widget before inserting new content
+        # Schedule the UI update on the main thread.
+        self.text_widget.after(0, self.update_text_widget, log_files)
+    
+    def update_text_widget(self, log_files):
+        """Update the Text widget with the retrieved logs."""
         self.text_widget.delete("1.0", tk.END)
         self.text_widget.insert(tk.END, "Collected Log Files:\n")
         self.text_widget.insert(tk.END, "=" * 80 + "\n")
@@ -84,5 +157,3 @@ class TestCode(tk.Frame):
             self.text_widget.insert(tk.END, "-" * 80 + "\n")
             self.text_widget.insert(tk.END, details['content'] + "\n")
             self.text_widget.insert(tk.END, "=" * 80 + "\n")
-        
-        return log_files
