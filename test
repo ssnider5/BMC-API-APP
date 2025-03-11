@@ -1,11 +1,42 @@
-    def testCode(self):
-        date = None
-        resp = self.controller.mvcm.getalllogs('https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs')
-        #find out how many packages in the returned json
-        iteration = from 1 to number of json packages
-        resp = self.controller.mvcm.getalllogs(f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/{iteration}')
-        #iterate through each package in the returned json and get the 'name' field, and 'dateModified' field, and 'parent' field
-        #if the date is = None then set it to todays date and check for the datemodified field to be the same, if not none then check for when the modified date is 
-        # after the specified date, if either is true then create a dictionary where the field's are the 'name' field and then the response.text of this call
-        resp = self.controller.mvcm.getalllogs(f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/download/{iteration}/{parent}/{name}'
-        dict of {name} = resp.text
+    def testCode(self, specified_date=None):
+        # Initialize date to None if not specified
+        date = specified_date
+        
+        # Dictionary to store log files
+        log_files = {}
+        
+        # Get all logs (package list)
+        base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
+        resp = self.controller.mvcm.getalllogs(base_url)
+        
+        # Parse the response to get the number of packages
+        packages = json.loads(resp.text)
+        total_packages = len(packages)
+        
+        # If date is None, set it to today's date in the correct format
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Iterate through each package
+        for iteration in range(1, total_packages + 1):
+            # Get details for specific package
+            package_url = f'{base_url}/{iteration}'
+            package_resp = self.controller.mvcm.getalllogs(package_url)
+            package_data = json.loads(package_resp.text)
+            
+            # Iterate through each log in the package
+            for log in package_data:
+                name = log.get('name')
+                parent = log.get('parent')
+                date_modified = log.get('dateModified')  # Already in format '2025-03-11'
+                
+                # Check if the log was modified on or after the specified date
+                if date_modified >= date:
+                    # Download the specific log file
+                    download_url = f'{base_url}/download/{iteration}/{parent}/{name}'
+                    download_resp = self.controller.mvcm.getalllogs(download_url)
+                    
+                    # Store the log content in the dictionary
+                    log_files[name] = download_resp.text
+        
+        return log_files
