@@ -1,3 +1,8 @@
+import json
+from datetime import datetime
+import tkinter as tk
+from tkinter import ttk
+
 class TestCode(tk.Frame):
     def __init__(self, master, controller, username, password, servers, **kwargs):
         super().__init__(master, **kwargs)
@@ -6,69 +11,84 @@ class TestCode(tk.Frame):
         self.password = password
         self.servers = servers  # List of tuples: (Environment, Hostname)
         self.current_action = None
-        self.action_buttons = {}  # To store references to action buttons
+        self.action_buttons = {}      # To store references to action buttons
         self.side_panel_buttons = {}  # To store references to side panel buttons
         # Set default selected server to the first one
         self.selected_server = self.servers[0]
         self.current_panel_mode = "saved_configurations"  # Default panel mode
         self.is_panel_expanded = True  # Track if side panel is expanded
-        self.side_panel_width = 200  # Default width of side panel when expanded
+        self.side_panel_width = 200    # Default width of side panel when expanded
+
+        # Create a panel for displaying logs using a Text widget inside a ttk Frame
+        self.log_panel = ttk.Frame(self)
+        self.log_panel.pack(fill='both', expand=True, padx=10, pady=10)
+
+        # Create the Text widget for log output
+        self.text_widget = tk.Text(self.log_panel, wrap='none', font=("Courier", 10))
+        self.text_widget.pack(side='left', fill='both', expand=True)
+
+        # Create a vertical scrollbar and connect it to the Text widget
+        self.v_scrollbar = ttk.Scrollbar(self.log_panel, orient='vertical', command=self.text_widget.yview)
+        self.v_scrollbar.pack(side='right', fill='y')
+        self.text_widget.configure(yscrollcommand=self.v_scrollbar.set)
+
+        # Optionally, you can create a horizontal scrollbar if needed:
+        # self.h_scrollbar = ttk.Scrollbar(self.log_panel, orient='horizontal', command=self.text_widget.xview)
+        # self.h_scrollbar.pack(side='bottom', fill='x')
+        # self.text_widget.configure(xscrollcommand=self.h_scrollbar.set)
+
+        # Retrieve and display logs
         self.testCode()
 
     def testCode(self, specified_date=None):
-        # Initialize date to None if not specified
-        date = specified_date
+        # Use specified date or default to today's date (formatted as YYYY-MM-DD)
+        date = specified_date or datetime.now().strftime('%Y-%m-%d')
         
-        # Dictionary to store log files
+        # Dictionary to store log files with structure: { log_name: {'type': log_type, 'content': log_content} }
         log_files = {}
         
-        # Get all logs (package list)
         base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
         resp = self.controller.mvcm.getalllogs(base_url)
         
-        # Parse the response to get the packages
-        if hasattr(resp, 'text'):
+        # Attempt to parse the response as JSON
+        try:
+            packages = resp.json()
+        except Exception:
             packages = json.loads(resp.text)
-        else:
-            # Assuming resp is already the parsed JSON
-            packages = resp
         
-        packages = resp.json()
-        # If date is None, set it to today's date in the correct format
-        if date is None:
-            date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Iterate through each package
+        # Iterate through each package (assuming package index corresponds to its ID)
         for i, package in enumerate(packages, 1):
-            log_type = package.get('name')
-            
-            resp = self.controller.mvcm.getalllogs(f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/{i}')
-            # Process each log file in the package
-            log_files_array = resp.json()
-            log_files_array = log_files_array.get('logFiles')
+            log_type = package.get('name', 'Unknown')
+            resp = self.controller.mvcm.getalllogs(f'{base_url}/{i}')
+            log_files_array = resp.json().get('logFiles', [])
             for log_file in log_files_array:
-                name = log_file.get('name')
+                name = log_file.get('name', 'Unnamed Log')
                 parent = log_file.get('parent')
                 date_modified = log_file.get('dateModified')
                 
-                # Check if the log was modified on or after the specified date
+                # Only process logs modified on or after the given date
                 if date_modified and date_modified >= date:
-                    # Download the specific log file
+                    # Construct the download URL based on whether a parent exists
                     if parent:
                         download_url = f'{base_url}/download/{i}/{parent}/{name}'
                     else:
                         download_url = f'{base_url}/download/{i}/{name}'
-                        
+                    
                     download_resp = self.controller.mvcm.getalllogs(download_url)
+                    log_content = download_resp.text if hasattr(download_resp, 'text') else download_resp
                     
-                    # Get the log content
-                    if hasattr(download_resp, 'text'):
-                        log_content = download_resp.text
-                    else:
-                        # If download_resp is already the content
-                        log_content = download_resp
-                    
-                    # Store the log content in the dictionary
-                    log_files[name] = log_content
-        print(log_files)
+                    # Save the log content along with its type
+                    log_files[name] = {'type': log_type, 'content': log_content}
+        
+        # Clear the Text widget before inserting new content
+        self.text_widget.delete("1.0", tk.END)
+        self.text_widget.insert(tk.END, "Collected Log Files:\n")
+        self.text_widget.insert(tk.END, "=" * 80 + "\n")
+        for log_name, details in log_files.items():
+            self.text_widget.insert(tk.END, f"Log Name: {log_name}\n")
+            self.text_widget.insert(tk.END, f"Log Type: {details['type']}\n")
+            self.text_widget.insert(tk.END, "-" * 80 + "\n")
+            self.text_widget.insert(tk.END, details['content'] + "\n")
+            self.text_widget.insert(tk.END, "=" * 80 + "\n")
+        
         return log_files
