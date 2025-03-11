@@ -9,8 +9,14 @@
         base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
         resp = self.controller.mvcm.getalllogs(base_url)
         
-        # Parse the response to get the number of packages
-        packages = json.loads(resp.text)
+        # Parse the response - handle both cases
+        if hasattr(resp, 'text'):
+            packages = json.loads(resp.text)
+        else:
+            # Assuming resp is already the parsed JSON
+            packages = resp
+        
+        # Determine the number of packages
         total_packages = len(packages)
         
         # If date is None, set it to today's date in the correct format
@@ -22,21 +28,36 @@
             # Get details for specific package
             package_url = f'{base_url}/{iteration}'
             package_resp = self.controller.mvcm.getalllogs(package_url)
-            package_data = json.loads(package_resp.text)
+            
+            # Parse the package response
+            if hasattr(package_resp, 'text'):
+                package_data = json.loads(package_resp.text)
+            else:
+                # Assuming package_resp is already the parsed JSON
+                package_data = package_resp
             
             # Iterate through each log in the package
             for log in package_data:
-                name = log.get('name')
-                parent = log.get('parent')
-                date_modified = log.get('dateModified')  # Already in format '2025-03-11'
-                
-                # Check if the log was modified on or after the specified date
-                if date_modified >= date:
-                    # Download the specific log file
-                    download_url = f'{base_url}/download/{iteration}/{parent}/{name}'
-                    download_resp = self.controller.mvcm.getalllogs(download_url)
+                # Check if log is a dictionary
+                if isinstance(log, dict):
+                    name = log.get('name')
+                    parent = log.get('parent')
+                    date_modified = log.get('dateModified')  # Already in format '2025-03-11'
                     
-                    # Store the log content in the dictionary
-                    log_files[name] = download_resp.text
+                    # Check if we have valid data and the log was modified on or after the specified date
+                    if name and parent and date_modified and date_modified >= date:
+                        # Download the specific log file
+                        download_url = f'{base_url}/download/{iteration}/{parent}/{name}'
+                        download_resp = self.controller.mvcm.getalllogs(download_url)
+                        
+                        # Get the log content
+                        if hasattr(download_resp, 'text'):
+                            log_content = download_resp.text
+                        else:
+                            # If download_resp is already the content
+                            log_content = download_resp
+                        
+                        # Store the log content in the dictionary
+                        log_files[name] = log_content
         
         return log_files
