@@ -1,3 +1,20 @@
+class TestCode(tk.Frame):
+    def __init__(self, master, controller, username, password, servers, **kwargs):
+        super().__init__(master, **kwargs)
+        self.controller = controller
+        self.username = username
+        self.password = password
+        self.servers = servers  # List of tuples: (Environment, Hostname)
+        self.current_action = None
+        self.action_buttons = {}  # To store references to action buttons
+        self.side_panel_buttons = {}  # To store references to side panel buttons
+        # Set default selected server to the first one
+        self.selected_server = self.servers[0]
+        self.current_panel_mode = "saved_configurations"  # Default panel mode
+        self.is_panel_expanded = True  # Track if side panel is expanded
+        self.side_panel_width = 200  # Default width of side panel when expanded
+        self.testCode()
+
     def testCode(self, specified_date=None):
         # Initialize date to None if not specified
         date = specified_date
@@ -16,17 +33,19 @@
             # Assuming resp is already the parsed JSON
             packages = resp
         
+        packages = resp.json()
         # If date is None, set it to today's date in the correct format
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
         
         # Iterate through each package
         for i, package in enumerate(packages, 1):
-            package_name = package.get('name')
+            log_type = package.get('name')
             
+            resp = self.controller.mvcm.getalllogs(f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/{i}')
             # Process each log file in the package
-            log_files_array = package.get('logFiles', [])
-            
+            log_files_array = resp.json()
+            log_files_array = log_files_array.get('logFiles')
             for log_file in log_files_array:
                 name = log_file.get('name')
                 parent = log_file.get('parent')
@@ -35,7 +54,11 @@
                 # Check if the log was modified on or after the specified date
                 if date_modified and date_modified >= date:
                     # Download the specific log file
-                    download_url = f'{base_url}/download/{i}/{parent}/{name}'
+                    if parent:
+                        download_url = f'{base_url}/download/{i}/{parent}/{name}'
+                    else:
+                        download_url = f'{base_url}/download/{i}/{name}'
+                        
                     download_resp = self.controller.mvcm.getalllogs(download_url)
                     
                     # Get the log content
@@ -47,5 +70,5 @@
                     
                     # Store the log content in the dictionary
                     log_files[name] = log_content
-        
+        print(log_files)
         return log_files
