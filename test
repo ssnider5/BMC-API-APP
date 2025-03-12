@@ -7,8 +7,11 @@ class TestCode(tk.Frame):
         self.servers = servers  # List of tuples: (Environment, Hostname)
         self.selected_server = self.servers[0]
         self.base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
-        self.cache = {}  # Cache for API responses
-
+        
+        # Two-level caching strategy
+        self.raw_log_cache = {}  # Cache for raw downloaded logs
+        self.filtered_log_cache = {}  # Cache for filtered results
+        
         # Create an input frame for date and time filters.
         self.input_frame = ttk.Frame(self)
         self.input_frame.pack(pady=10)
@@ -39,6 +42,27 @@ class TestCode(tk.Frame):
         self.v_scrollbar = ttk.Scrollbar(self.log_panel, orient='vertical', command=self.text_widget.yview)
         self.v_scrollbar.pack(side='right', fill='y')
         self.text_widget.configure(yscrollcommand=self.v_scrollbar.set)
+        
+        # Add cache status display
+        ttk.Label(self.input_frame, text="Cache Status:").grid(row=3, column=0, padx=5, pady=2)
+        self.cache_status = ttk.Label(self.input_frame, text="0 logs cached")
+        self.cache_status.grid(row=3, column=1, padx=5, pady=2)
+        
+        # Add clear cache button
+        self.clear_cache_button = ttk.Button(self.input_frame, text="Clear Cache", command=self.clear_cache)
+        self.clear_cache_button.grid(row=4, column=0, columnspan=2, pady=5)
+    
+    def clear_cache(self):
+        """Clears both raw and filtered log caches."""
+        self.raw_log_cache = {}
+        self.filtered_log_cache = {}
+        self.update_cache_status()
+        self.text_widget.delete("1.0", tk.END)
+        self.text_widget.insert(tk.END, "Cache cleared.\n")
+    
+    def update_cache_status(self):
+        """Updates the cache status display."""
+        self.cache_status.config(text=f"{len(self.raw_log_cache)} logs cached")
     
     def start_log_retrieval(self):
         """Starts a background thread to retrieve logs based on the entered date and time filters."""
@@ -64,47 +88,64 @@ class TestCode(tk.Frame):
         """Log timing information to the text widget on the main thread."""
         self.text_widget.after(0, lambda: self.text_widget.insert(tk.END, f"{message}\n"))
         
-    def download_and_filter_log(self, package_index, parent, name, time_filter, date_filter):
+    def get_or_download_log(self, package_index, parent, name):
         """
-        Downloads a single log file and applies time filtering if specified.
-        Constructs the download URL based on the presence of a parent.
-        Returns a tuple of (log_content, download_time)
+        Gets a log from cache or downloads it if not cached.
+        Returns the raw log content.
         """
-        start_time = time.time()
-        
-        # Skip downloading logs if date filter doesn't match
-        if date_filter and date_filter != "0000-00-00":
-            # Check if this log was modified on or after date_filter before downloading
-            # If we have that information, otherwise download
-            pass
-        
         # Construct the download URL
         if parent and not (name.startswith('server.') and name.endswith('.log') and name[7:-4].isdigit()) and not (name.startswith('catalina.')):
             download_url = f'{self.base_url}/download/{package_index}/{parent}/{name}'
         else:
             download_url = f'{self.base_url}/download/{package_index}/{name}'
         
-        # Check cache first
-        cache_key = f"{download_url}_{time_filter}_{date_filter}"
-        if cache_key in self.cache:
-            return self.cache[cache_key], 0, 0
+        # Cache key for raw log
+        cache_key = download_url
         
-        # Download the log file
+        # Check raw log cache first
+        if cache_key in self.raw_log_cache:
+            return self.raw_log_cache[cache_key], 0  # Return cached content and 0 download time
+        
+        # Download the log file if not in cache
+        start_time = time.time()
         download_resp = self.controller.mvcm.getalllogs(download_url)
         download_time = time.time() - start_time
         
         log_content = download_resp.text if hasattr(download_resp, 'text') else download_resp
         
-        # Filter the log content
-        filter_start_time = time.time()
-        if (time_filter or (date_filter and date_filter != "0000-00-00")) and log_content:
-            log_content = self.filter_log_content(log_content, time_filter, date_filter)
-        filter_time = time.time() - filter_start_time
+        # Cache the raw log
+        self.raw_log_cache[cache_key] = log_content
+        self.update_cache_status()
         
-        # Cache the result
-        self.cache[cache_key] = log_content
+        return log_content, download_time
+    
+    def get_filtered_log(self, raw_log, time_filter, date_filter):
+        """
+        Filters a log based on time and date filters.
+        First checks if this filter has been applied before (in filtered_log_cache).
+        """
+        # If no filters, return raw log
+        if not time_filter and (not date_filter or date_filter == "0000-00-00"):
+            return raw_log, 0
         
-        return log_content, download_time, filter_time
+        # Create a unique key for this raw log and filter combination
+        # We'll use a hash of the raw log as part of the key to avoid extremely long keys
+        raw_log_hash = hash(raw_log)
+        filter_key = f"{raw_log_hash}_{time_filter}_{date_filter}"
+        
+        # Check filtered log cache
+        if filter_key in self.filtered_log_cache:
+            return self.filtered_log_cache[filter_key], 0
+        
+        # Apply filter and time it
+        start_time = time.time()
+        filtered_log = self.filter_log_content(raw_log, time_filter, date_filter)
+        filter_time = time.time() - start_time
+        
+        # Cache the filtered result
+        self.filtered_log_cache[filter_key] = filtered_log
+        
+        return filtered_log, filter_time
     
     def filter_log_content(self, log_content, time_filter, date_filter):
         """
@@ -166,6 +207,19 @@ class TestCode(tk.Frame):
         
         return "\n".join(filtered_lines)
 
+    def download_and_filter_log(self, package_index, parent, name, time_filter, date_filter):
+        """
+        Gets a log (from cache or by downloading) and applies filtering.
+        Returns a tuple of (filtered_log_content, download_time, filter_time)
+        """
+        # First, get or download the raw log
+        raw_log, download_time = self.get_or_download_log(package_index, parent, name)
+        
+        # Then filter the log (from filter cache or by applying filter)
+        filtered_log, filter_time = self.get_filtered_log(raw_log, time_filter, date_filter)
+        
+        return filtered_log, download_time, filter_time
+
     def testCode(self, specified_date=None, specified_time=None):
         """
         Retrieve log files from the API with optional date and time filtering.
@@ -213,7 +267,11 @@ class TestCode(tk.Frame):
                     logs_to_download.append((i, parent, name, log_type))
         
         self.log_timing(f"API calls for log lists took: {log_list_fetch_time:.3f} seconds")
-        self.log_timing(f"Found {len(logs_to_download)} logs to download")
+        self.log_timing(f"Found {len(logs_to_download)} logs to process")
+        
+        # Track cache statistics
+        cache_hits = 0
+        cache_misses = 0
         
         # Use ThreadPoolExecutor to parallelize the API calls for downloading logs
         log_files = {}
@@ -234,8 +292,16 @@ class TestCode(tk.Frame):
                 name, log_type = future_to_log[future]
                 try:
                     log_content, download_time, filter_time = future.result()
-                    total_download_time += download_time
+                    
+                    # If download_time is 0, it was a cache hit
+                    if download_time == 0:
+                        cache_hits += 1
+                    else:
+                        cache_misses += 1
+                        total_download_time += download_time
+                        
                     total_filter_time += filter_time
+                    
                     if log_content and log_content.strip():  # Only keep non-empty logs
                         log_files[name] = {'type': log_type, 'content': log_content}
                 except Exception as exc:
@@ -245,11 +311,13 @@ class TestCode(tk.Frame):
         overall_time = overall_end_time - overall_start_time
         
         # Summary timing information
+        self.log_timing(f"Cache hits: {cache_hits}, Cache misses: {cache_misses}")
         self.log_timing(f"Total download time: {total_download_time:.3f} seconds")
         self.log_timing(f"Total filtering time: {total_filter_time:.3f} seconds")
         self.log_timing(f"Overall processing time: {overall_time:.3f} seconds")
         self.log_timing(f"Retrieved {len(log_files)} logs with content")
 
+        print(f"Cache hits: {cache_hits}, Cache misses: {cache_misses}")
         print(f"Total download time: {total_download_time:.3f} seconds")
         print(f"Total filtering time: {total_filter_time:.3f} seconds")
         print(f"Overall processing time: {overall_time:.3f} seconds")
