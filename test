@@ -1,10 +1,54 @@
-import tkinter as tk
-from tkinter import ttk
-from datetime import datetime
-import threading
-import json
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
+class LoadingDialog(tk.Toplevel):
+    def __init__(self, parent, message="Processing..."):
+        super().__init__(parent)
+        self.title("Loading")
+        
+        # Make the dialog modal
+        self.transient(parent)
+        self.grab_set()
+        
+        # Remove window decorations
+        self.overrideredirect(True)
+        
+        # Center the dialog on the parent window
+        window_width = 300
+        window_height = 100
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Create a frame with a border
+        main_frame = ttk.Frame(self, relief='raised', borderwidth=2)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Add message label
+        self.message_label = ttk.Label(main_frame, text=message, font=('TkDefaultFont', 10))
+        self.message_label.pack(pady=10)
+        
+        # Add progress bar
+        self.progress_bar = ttk.Progressbar(main_frame, mode='indeterminate', length=200)
+        self.progress_bar.pack(pady=10)
+        
+        # Start the progress bar animation
+        self.progress_bar.start(10)
+        
+        # Force update of the dialog
+        self.update_idletasks()
+        
+        # Keep dialog on top
+        self.lift()
+        self.focus_force()
+
+    def update_progress(self):
+        # Keep updating the dialog while it's visible
+        if self.winfo_exists():
+            self.update_idletasks()
+            self.after(100, self.update_progress)
+
+    def start(self):
+        self.update_progress()
 
 class TestCode(tk.Frame):
     def __init__(self, master, controller, username, password, servers, **kwargs):
@@ -38,7 +82,7 @@ class TestCode(tk.Frame):
         self.log_panel.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Create the Text widget for log output.
-        self.text_widget = tk.Text(self.log_panel, wrap='none', font=("Courier", 10))
+        self.text_widget = tk.Text(self.log_panel, wrap='none', font=("Verdana", 10))
         self.text_widget.pack(side='left', fill='both', expand=True)
         
         # Create a vertical scrollbar and attach it.
@@ -61,12 +105,14 @@ class TestCode(tk.Frame):
         retrieval_thread = threading.Thread(target=self.testCode, args=(date_filter, time_filter))
         retrieval_thread.daemon = True
         retrieval_thread.start()
-    
-    def download_and_filter_log(self, base_url, package_index, parent, name, time_filter):
+        
+    def download_and_filter_log(self, base_url, package_index, parent, name, time_filter, date_filter):
         """
         Downloads a single log file and applies time filtering if specified.
         Constructs the download URL based on the presence of a parent.
         """
+        if date_filter == "0000-00-00":
+            date_filter = None
         if parent and not (name.startswith('server.') and name.endswith('.log') and name[7:-4].isdigit()) and not (name.startswith('catalina.')):
             download_url = f'{base_url}/download/{package_index}/{parent}/{name}'
         else:
@@ -76,19 +122,37 @@ class TestCode(tk.Frame):
         log_content = download_resp.text if hasattr(download_resp, 'text') else download_resp
         
         # If a time filter is specified, filter the log lines.
-        if time_filter:
+        if time_filter or date_filter:
             filtered_lines = []
-            desired_hour = time_filter.split(":")[0]
+            desired_hour = None
+            desired_minute = None
+            desired_tenth = None
+
+            if time_filter:
+                time_parts = time_filter.split(":")
+                desired_hour = time_parts[0]
+                if len(time_parts) > 1:
+                    desired_minute = time_parts[1]
+                    if len(desired_minute) == 1:
+                        desired_tenth = desired_minute[0]
+                    if desired_minute == '':
+                        desired_minute = None
+
+            desired_date = date_filter if date_filter else None
+
             for line in log_content.splitlines():
                 # Assume a log line begins with a timestamp "YYYY-MM-DD HH:MM:SS"
-                if len(line) >= 13:
+                if len(line) >= 19:
+                    log_date = line[:10]
                     log_hour = line[11:13]
-                    if log_hour == desired_hour:
-                        filtered_lines.append(line)
-                else:
-                    filtered_lines.append(line)
+                    log_minute = line[14:16]
+                    log_tenth = line[14:15]
+                    if (desired_hour is None or log_hour == desired_hour) and (desired_date is None or log_date == desired_date):
+                        if desired_minute is None or log_minute == desired_minute or log_tenth == desired_tenth:
+                            filtered_lines.append(line)
+
             log_content = "\n".join(filtered_lines)
-        
+
         return log_content
 
     def testCode(self, specified_date=None, specified_time=None):
@@ -117,7 +181,7 @@ class TestCode(tk.Frame):
             packages = json.loads(resp.text)
         
         # Use ThreadPoolExecutor to parallelize the API calls for downloading logs.
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_log = {}
             for i, package in enumerate(packages, 1):
                 log_type = package.get('name', 'Unknown')
@@ -131,7 +195,7 @@ class TestCode(tk.Frame):
                     # Only process logs modified on or after the specified date.
                     if date_modified and date_modified >= date_filter:
                         # Submit the download task to the thread pool.
-                        future = executor.submit(self.download_and_filter_log, base_url, i, parent, name, time_filter)
+                        future = executor.submit(self.download_and_filter_log, base_url, i, parent, name, time_filter, date_filter)
                         future_to_log[future] = (name, log_type)
             
             # Collect results as they complete.
@@ -152,6 +216,8 @@ class TestCode(tk.Frame):
         self.text_widget.insert(tk.END, "Collected Log Files:\n")
         self.text_widget.insert(tk.END, "=" * 80 + "\n")
         for log_name, details in log_files.items():
+            if details['content'] == None or details['content'] == '':
+                continue
             self.text_widget.insert(tk.END, f"Log Name: {log_name}\n")
             self.text_widget.insert(tk.END, f"Log Type: {details['type']}\n")
             self.text_widget.insert(tk.END, "-" * 80 + "\n")
