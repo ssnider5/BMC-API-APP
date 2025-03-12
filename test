@@ -87,7 +87,7 @@ class TestCode(tk.Frame):
         # Check cache first
         cache_key = f"{download_url}_{time_filter}_{date_filter}"
         if cache_key in self.cache:
-            return self.cache[cache_key], 0
+            return self.cache[cache_key], 0, 0
         
         # Download the log file
         download_resp = self.controller.mvcm.getalllogs(download_url)
@@ -249,6 +249,11 @@ class TestCode(tk.Frame):
         self.log_timing(f"Total filtering time: {total_filter_time:.3f} seconds")
         self.log_timing(f"Overall processing time: {overall_time:.3f} seconds")
         self.log_timing(f"Retrieved {len(log_files)} logs with content")
+
+        print(f"Total download time: {total_download_time:.3f} seconds")
+        print(f"Total filtering time: {total_filter_time:.3f} seconds")
+        print(f"Overall processing time: {overall_time:.3f} seconds")
+        print(f"Retrieved {len(log_files)} logs with content")
         
         # Schedule the UI update on the main thread
         self.text_widget.after(0, self.update_text_widget, log_files)
@@ -259,9 +264,9 @@ class TestCode(tk.Frame):
         self.text_widget.insert(tk.END, "Collected Log Files:\n")
         self.text_widget.insert(tk.END, "=" * 80 + "\n")
         
-        if not log_files:
-            self.text_widget.insert(tk.END, "No logs found matching the criteria.\n")
-            return
+        #if not log_files:
+        #    self.text_widget.insert(tk.END, "No logs found matching the criteria.\n")
+        #    return
             
         for log_name, details in log_files.items():
             if not details['content']:
