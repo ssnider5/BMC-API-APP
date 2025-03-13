@@ -1,198 +1,83 @@
-import tkinter as tk
-from tkinter import ttk
-import threading
-import time
-import json
-from concurrent.futures import ThreadPoolExecutor
-import concurrent.futures
+    def create_server(self):
+        response = self.controller.mvcm.gettest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/api/automation/servers?includeSessions=true')
+    ''' response.json() will give something similar to this: {
+      "servers": [
+            {
+            "name": "VM_Systems",
+            "requireClientCerts": false,
+            "startupMode": "automatic",
+            "status": "stopped",
+            "viewerPort": 9100,
+            "websocketPort": 9101,
+     "sessions": [
+                {
+                    "name": "*Watchdog*",
+                    "sessionType": "watchdog",
+                    "enabled": true,
+                    "startupScript": ""
+                },
+                {
+                    "consolePort": 10000,
+                    "consoleUserName": "bmcuser",
+                    "consolePassword": "********",
+                    "consoleHost": "localhost",
+                    "name": "ABLE",
+                    "consoleSslPort": 10001,
+                    "consoleUseSsl": true,
+                    "sessionType": "ccs",
+                    "consoleSessionName": "VM1",
+                    "enabled": true,
+                    "startupScript": "",
+                    "consoleType": "zvm"
+                }
 
-class TestCode(tk.Frame):
-    def __init__(self, master, controller, **kwargs):
-        super().__init__(master, **kwargs)
-        self.controller = controller
-        self.base_url = 'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs'
-        
-        # Two-level caching strategy
-        self.raw_log_cache = {}  # Cache for raw downloaded logs
-        self.filtered_log_cache = {}  # Cache for filtered results
-        
-        # Create an input frame for date and time filters.
-        self.input_frame = ttk.Frame(self)
-        self.input_frame.pack(pady=10)
-        
-        ttk.Label(self.input_frame, text="Date (YYYY-MM-DD):").grid(row=0, column=0, padx=5, pady=2)
-        self.date_entry = ttk.Entry(self.input_frame)
-        self.date_entry.grid(row=0, column=1, padx=5, pady=2)
-        
-        ttk.Label(self.input_frame, text="Time (HH: or HH:MM):").grid(row=1, column=0, padx=5, pady=2)
-        self.time_entry = ttk.Entry(self.input_frame)
-        self.time_entry.grid(row=1, column=1, padx=5, pady=2)
-        
-        self.retrieve_button = ttk.Button(self.input_frame, text="Retrieve Logs", command=self.start_log_retrieval)
-        self.retrieve_button.grid(row=2, column=0, columnspan=2, pady=5)
-
-        ttk.Label(self.input_frame, text="Cache Status:").grid(row=3, column=0, padx=5, pady=2)
-        self.cache_status = ttk.Label(self.input_frame, text="0 logs cached")
-        self.cache_status.grid(row=3, column=1, padx=5, pady=2)
-        
-        self.clear_cache_button = ttk.Button(self.input_frame, text="Clear Cache", command=self.clear_cache)
-        self.clear_cache_button.grid(row=4, column=0, columnspan=2, pady=5)
-        
-        # -------------------------
-        # New UI structure: A horizontal container holding:
-        #  - Left: TOC (Table of Contents)
-        #  - Right: Log details (with a floating header and scrollbars)
-        # -------------------------
-        self.content_frame = ttk.Frame(self)
-        self.content_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Left panel: TOC
-        self.toc_frame = ttk.Frame(self.content_frame)
-        self.toc_frame.pack(side='left', fill='y')
-        
-        # Create a Treeview for the table of contents.
-        self.toc_tree = ttk.Treeview(self.toc_frame)
-        self.toc_tree.pack(fill='both', expand=True)
-        # Bind a selection event so clicking scrolls to the log.
-        self.toc_tree.bind("<<TreeviewSelect>>", self.on_toc_select)
-        
-        # Right panel: Log details with a floating header.
-        self.log_panel = ttk.Frame(self.content_frame)
-        self.log_panel.pack(side='left', fill='both', expand=True)
-        
-        # Floating header label that displays the current log and log type.
-        self.current_log_label = ttk.Label(self.log_panel, text="Current Log: ")
-        self.current_log_label.pack(fill='x')
-        
-        # Create a frame for the Text widget and its scrollbars.
-        self.text_frame = ttk.Frame(self.log_panel)
-        self.text_frame.pack(fill='both', expand=True)
-        
-        # Text widget for log output; wrap is set to 'none' to allow horizontal scrolling.
-        self.text_widget = tk.Text(self.text_frame, wrap='none', font=("Verdana", 10))
-        self.text_widget.pack(side='left', fill='both', expand=True)
-        
-        # Vertical scrollbar
-        self.v_scrollbar = ttk.Scrollbar(self.text_frame, orient='vertical', command=self.text_widget.yview)
-        self.v_scrollbar.pack(side='right', fill='y')
-        self.text_widget.configure(yscrollcommand=self.v_scrollbar.set)
-        
-        # Horizontal scrollbar
-        self.h_scrollbar = ttk.Scrollbar(self.log_panel, orient='horizontal', command=self.text_widget.xview)
-        self.h_scrollbar.pack(side='bottom', fill='x')
-        self.text_widget.configure(xscrollcommand=self.h_scrollbar.set)
-        
-        # Bind scroll events to update the floating header.
-        self.text_widget.bind("<ButtonRelease-1>", self.update_current_log_header)
-        self.text_widget.bind("<KeyRelease>", self.update_current_log_header)
-        self.text_widget.bind("<MouseWheel>", self.update_current_log_header)
-    
-    def clear_cache(self):
-        """Clears both raw and filtered log caches."""
-        self.raw_log_cache = {}
-        self.filtered_log_cache = {}
-        self.update_cache_status()
-        self.text_widget.delete("1.0", tk.END)
-        self.text_widget.insert(tk.END, "Cache cleared.\n")
-    
-    def update_cache_status(self):
-        """Updates the cache status display."""
-        self.cache_status.config(text=f"{len(self.raw_log_cache)} logs cached")
-    
-    def start_log_retrieval(self):
-        """Starts a background thread to retrieve logs based on the entered date and time filters."""
-        date_filter = self.date_entry.get().strip() or None
-        time_filter = self.time_entry.get().strip() or ""
-        
-        self.text_widget.delete("1.0", tk.END)
-        self.text_widget.insert(tk.END, "Starting log retrieval...\n")
-        
-        retrieval_thread = threading.Thread(target=self.testCode, args=(date_filter, time_filter))
-        retrieval_thread.daemon = True
-        retrieval_thread.start()
-    
-    def update_current_log_header(self, event=None):
-        """
-        Determine the current log section visible in the text widget and update the floating header.
-        Assumes that each log starts with lines like:
-           "Log Name: <name>"
-           "Log Type: <type>"
-        """
-        # Get the index of the top visible pixel in the text widget.
-        first_visible_index = self.text_widget.index("@0,0")
-        # Get the line number
-        line_num = int(first_visible_index.split('.')[0])
-        # Retrieve all text lines.
-        all_lines = self.text_widget.get("1.0", tk.END).splitlines()
-        
-        current_log = "Unknown"
-        current_log_type = "Unknown"
-        # Search upward from the current line until we find a header.
-        for i in range(line_num - 1, -1, -1):
-            line = all_lines[i]
-            if line.startswith("Log Name:"):
-                current_log = line.replace("Log Name:", "").strip()
-            if line.startswith("Log Type:"):
-                current_log_type = line.replace("Log Type:", "").strip()
-                # Once both are found, break.
-                break
-        
-        self.current_log_label.config(text=f"Current Log: {current_log} | Type: {current_log_type}")
-    
-    def on_toc_select(self, event):
-        """
-        When a user selects an item from the TOC tree, scroll the text widget to the corresponding log header.
-        If a log (child node) is selected, scroll to its "Log Name:" line.
-        If a log type (parent node) is selected, scroll to the first log of that type.
-        """
-        selected_item = self.toc_tree.selection()
-        if not selected_item:
-            return
-        item_text = self.toc_tree.item(selected_item, "text")
-        parent = self.toc_tree.parent(selected_item[0])
-        if parent:  # This is a log (child node)
-            search_term = f"Log Name: {item_text}"
-        else:  # This is a log type (parent node)
-            search_term = f"Log Type: {item_text}"
-        pos = self.text_widget.search(search_term, "1.0", tk.END)
-        if pos:
-            self.text_widget.see(pos)
-    
-    # ... (methods get_or_download_log, get_filtered_log, filter_log_content, download_and_filter_log, testCode remain mostly unchanged)
-    
-    def update_text_widget(self, log_files):
-        """
-        Update the Text widget with the retrieved logs and populate the TOC.
-        This example organizes the TOC by log type.
-        """
-        self.text_widget.delete("1.0", tk.END)
-        # Clear existing TOC items.
-        for item in self.toc_tree.get_children():
-            self.toc_tree.delete(item)
-        
-        # Organize logs by type.
-        toc_data = {}
-        for log_name, details in log_files.items():
-            log_type = details['type']
-            toc_data.setdefault(log_type, []).append(log_name)
-        
-        # Populate the TOC Treeview.
-        for log_type, logs in toc_data.items():
-            parent_id = self.toc_tree.insert("", "end", text=log_type, open=True)
-            for log_name in logs:
-                self.toc_tree.insert(parent_id, "end", text=log_name)
-        
-        # Insert logs into the text widget.
-        self.text_widget.insert(tk.END, "Collected Log Files:\n")
-        self.text_widget.insert(tk.END, "=" * 80 + "\n")
-        for log_name, details in log_files.items():
-            if not details['content']:
-                continue
-            self.text_widget.insert(tk.END, f"Log Name: {log_name}\n")
-            self.text_widget.insert(tk.END, f"Log Type: {details['type']}\n")
-            self.text_widget.insert(tk.END, "-" * 80 + "\n")
-            self.text_widget.insert(tk.END, details['content'] + "\n")
-            self.text_widget.insert(tk.END, "=" * 80 + "\n")
-    
-    # The rest of your methods (testCode, etc.) remain the same.
-    # Ensure that any UI updates are done on the main thread.
+           },
+           {
+           "name": "ZOS_Systems",
+           "requireClientCerts": false,
+           "startupMode": "automatic",
+           "status": "stopped",
+           "viewerPort": 9110,
+           "websocketPort": 9111,
+           "sessions": [
+               {
+                    "name": "*Watchdog*",
+                    "sessionType": "watchdog",
+                    "enabled": true,
+                    "startupScript": ""
+               },
+               {
+                    "consolePort": 10000,
+                    "consoleUserName": "bmcuser",
+                    "consolePassword": "********",
+                    "consoleHost": "localhost",
+                    "name": "ABLE",
+                    "consoleSslPort": 10001,
+                    "consoleUseSsl": true,
+                    "sessionType": "ccs",
+                    "consoleSessionName": "ABLE",
+                    "enabled": true,
+                    "startupScript": "",
+                    "consoleType": "zos"
+                },
+                {
+                    "consolePort": 10000,
+                    "consoleUserName": "bmcuser",
+                    "consolePassword": "********",
+                    "consoleHost": "localhost",
+                    "name": "BAKR",
+                    "consoleSslPort": 10001,
+                    "consoleUseSsl": true,
+                    "sessionType": "ccs",
+                    "consoleSessionName": "BAKR",
+                    "enabled": true,
+                    "startupScript": "",
+                    "consoleType": "zos"
+                }
+            }
+      ]
+}
+'''
+# what i want to do is check when the servers 'name' is equal to 'EMEA' 'MERCHANT_CONSOLES' and 'OPTIS_CONSOLES' where i will then iterate through their sessions
+# and grab only the 'name' and add it to an array of strings and then put the array of strings in a json format called jsonconent
+        response = self.controller.mvcm.posttest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/automation/server/ALL_CONSOLES', jsoncontent)
