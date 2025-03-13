@@ -1,83 +1,31 @@
-    def create_server(self):
-        response = self.controller.mvcm.gettest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/api/automation/servers?includeSessions=true')
-    ''' response.json() will give something similar to this: {
-      "servers": [
-            {
-            "name": "VM_Systems",
-            "requireClientCerts": false,
-            "startupMode": "automatic",
-            "status": "stopped",
-            "viewerPort": 9100,
-            "websocketPort": 9101,
-     "sessions": [
-                {
-                    "name": "*Watchdog*",
-                    "sessionType": "watchdog",
-                    "enabled": true,
-                    "startupScript": ""
-                },
-                {
-                    "consolePort": 10000,
-                    "consoleUserName": "bmcuser",
-                    "consolePassword": "********",
-                    "consoleHost": "localhost",
-                    "name": "ABLE",
-                    "consoleSslPort": 10001,
-                    "consoleUseSsl": true,
-                    "sessionType": "ccs",
-                    "consoleSessionName": "VM1",
-                    "enabled": true,
-                    "startupScript": "",
-                    "consoleType": "zvm"
-                }
-
-           },
-           {
-           "name": "ZOS_Systems",
-           "requireClientCerts": false,
-           "startupMode": "automatic",
-           "status": "stopped",
-           "viewerPort": 9110,
-           "websocketPort": 9111,
-           "sessions": [
-               {
-                    "name": "*Watchdog*",
-                    "sessionType": "watchdog",
-                    "enabled": true,
-                    "startupScript": ""
-               },
-               {
-                    "consolePort": 10000,
-                    "consoleUserName": "bmcuser",
-                    "consolePassword": "********",
-                    "consoleHost": "localhost",
-                    "name": "ABLE",
-                    "consoleSslPort": 10001,
-                    "consoleUseSsl": true,
-                    "sessionType": "ccs",
-                    "consoleSessionName": "ABLE",
-                    "enabled": true,
-                    "startupScript": "",
-                    "consoleType": "zos"
-                },
-                {
-                    "consolePort": 10000,
-                    "consoleUserName": "bmcuser",
-                    "consolePassword": "********",
-                    "consoleHost": "localhost",
-                    "name": "BAKR",
-                    "consoleSslPort": 10001,
-                    "consoleUseSsl": true,
-                    "sessionType": "ccs",
-                    "consoleSessionName": "BAKR",
-                    "enabled": true,
-                    "startupScript": "",
-                    "consoleType": "zos"
-                }
-            }
-      ]
-}
-'''
-# what i want to do is check when the servers 'name' is equal to 'EMEA' 'MERCHANT_CONSOLES' and 'OPTIS_CONSOLES' where i will then iterate through their sessions
-# and grab only the 'name' and add it to an array of strings and then put the array of strings in a json format called jsonconent
-        response = self.controller.mvcm.posttest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/automation/server/ALL_CONSOLES', jsoncontent)
+def create_server(self):
+    # Get the server data
+    response = self.controller.mvcm.gettest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/api/automation/servers?includeSessions=true')
+    
+    # Parse the JSON response
+    server_data = response.json()
+    
+    # Initialize an array to store session names
+    session_names = []
+    
+    # Define the servers we're interested in
+    target_servers = ['EMEA', 'MERCHANT_CONSOLES', 'OPTIS_CONSOLES']
+    
+    # Iterate through the servers
+    for server in server_data['servers']:
+        # Check if the current server is one we're interested in
+        if server['name'] in target_servers:
+            # Iterate through the sessions of this server
+            for session in server['sessions']:
+                # Add the session name to our array
+                session_names.append(session['name'])
+    
+    # Create the JSON content for the POST request
+    jsoncontent = {
+        "sessions": session_names
+    }
+    
+    # Make the POST request with the collected session names
+    response = self.controller.mvcm.posttest('https://sylp2bcmapp0002.ess.fiserv.one/mvcm-api/automation/server/ALL_CONSOLES', jsoncontent)
+    
+    return response
