@@ -9,10 +9,10 @@ from workers.log_worker import LogRetrievalWorker
 # Base Excel Panel
 # -------------------------------
 class BaseExcelPanel(tk.Frame):
-    def __init__(self, master, excel_parser, mvcm_inst, **kwargs):
+    def __init__(self, master, excel_parser, controller, **kwargs):
         super().__init__(master, **kwargs)
         self.excel_parser = excel_parser
-        self.mvcm_inst = mvcm_inst
+        self.controller = controller  # Changed from mvcm_inst to controller
         self.selected_file = None
         self.create_widgets()
 
@@ -68,10 +68,8 @@ class BaseExcelPanel(tk.Frame):
             self.server_item_map = {}
             for row in data:
                 item_id = self.data_tree.insert("", tk.END, values=row)
-                # Heuristic: try to map server name to row for updates
-                if len(row) > 0: self.server_item_map[row[0]] = item_id # Assuming 1st col is name
+                if len(row) > 0: self.server_item_map[row[0]] = item_id
             
-            # Scrollbars
             ys = ttk.Scrollbar(self.table_frame, orient=tk.VERTICAL, command=self.data_tree.yview)
             xs = ttk.Scrollbar(self.table_frame, orient=tk.HORIZONTAL, command=self.data_tree.xview)
             self.data_tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
@@ -95,17 +93,20 @@ class CreateFromExcelPanel(BaseExcelPanel):
     
     def run_import(self):
         try:
+            # 1. Get Data from Excel Parser
             json_data = self.excel_parser.get_json_data()
             self.created_servers = self.excel_parser.extract_names(json_data)
             
-            # Use controller/service to batch create
-            # Assuming ApiService has 'create_ccs_servers_batch' (moved from excel parser in Step 2)
-            # If still using excel parser direct method:
-            success = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
+            # 2. Call the Controller (ApiService) to handle the upload
+            # Note: create_ccs_servers_batch was defined in core/api_service.py in Step 2
+            success = self.controller.create_ccs_servers_batch(json_data)
             
-            messagebox.showinfo("Success", "Import Complete")
-            if messagebox.askyesno("Verify", "Verify Servers now?"):
-                self.start_verification()
+            if success:
+                messagebox.showinfo("Success", "Import Complete")
+                if messagebox.askyesno("Verify", "Verify Servers now?"):
+                    self.start_verification()
+            else:
+                 messagebox.showerror("Error", "One or more servers failed to create.")
                 
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -113,15 +114,14 @@ class CreateFromExcelPanel(BaseExcelPanel):
     def start_verification(self):
         if not hasattr(self, 'created_servers') or not self.created_servers: return
         
-        # UI Setup for Progress
         self.prog_win = tk.Toplevel(self)
         self.prog_win.title("Verifying")
         ttk.Label(self.prog_win, text="Verifying...").pack(pady=10)
         self.p_bar = ttk.Progressbar(self.prog_win, mode='determinate', maximum=len(self.created_servers))
         self.p_bar.pack(pady=10, padx=20)
         
-        # Start Worker
-        self.worker = VerificationWorker(self.mvcm_inst, self.created_servers)
+        # Pass the underlying mvcm instance to the worker
+        self.worker = VerificationWorker(self.controller.mvcm, self.created_servers)
         self.worker.start()
         self.after(100, self._poll_worker)
 
@@ -130,7 +130,6 @@ class CreateFromExcelPanel(BaseExcelPanel):
         
         for res in results:
             self.p_bar['value'] += 1
-            # Update Tree Row Color
             if hasattr(self, 'server_item_map') and res['server_name'] in self.server_item_map:
                 tag = 'success' if res['success'] else 'failure'
                 self.data_tree.item(self.server_item_map[res['server_name']], tags=(tag,))
@@ -146,13 +145,18 @@ class CreateFromExcelPanel(BaseExcelPanel):
 # -------------------------------
 class CreateConsoleFromExcelPanel(BaseExcelPanel):
     def get_action_name(self): return "Create Consoles"
-    def get_sheet_index(self): return 1 # Use second sheet
+    def get_sheet_index(self): return 1
     
     def run_import(self):
         try:
             json_data = self.excel_parser.get_json_data()
-            self.excel_parser.create_ccs_console(self.mvcm_inst, json_data)
-            messagebox.showinfo("Success", "Consoles Created")
+            # Call Controller method
+            success = self.controller.create_ccs_consoles_batch(json_data)
+            
+            if success:
+                messagebox.showinfo("Success", "Consoles Created")
+            else:
+                messagebox.showerror("Error", "Failed to create consoles.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -167,7 +171,6 @@ class AutomationPanel(tk.Frame):
 
     def run_automation(self):
         try:
-            # Example logic
             messagebox.showinfo("Info", "Automation logic executed.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -183,7 +186,6 @@ class LogSearchPanel(tk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
-        # Input Area
         input_frame = ttk.Frame(self)
         input_frame.pack(pady=10)
         
@@ -197,20 +199,14 @@ class LogSearchPanel(tk.Frame):
         
         ttk.Button(input_frame, text="Retrieve Logs", command=self.start_retrieval).grid(row=2, column=0, columnspan=2, pady=5)
         
-        # Log Display Area
         content = ttk.Frame(self)
         content.pack(fill='both', expand=True, padx=10)
         
-        # TOC (Left)
-        # FIX: Removed width=200 from constructor
-        self.toc_tree = ttk.Treeview(content) 
-        # Configure the main column width here
+        self.toc_tree = ttk.Treeview(content)
         self.toc_tree.column("#0", width=200, minwidth=100)
-        
         self.toc_tree.pack(side='left', fill='y')
         self.toc_tree.bind("<<TreeviewSelect>>", self.on_toc_select)
         
-        # Text (Right)
         self.log_text = tk.Text(content, wrap='none')
         ys = ttk.Scrollbar(content, command=self.log_text.yview)
         xs = ttk.Scrollbar(content, orient='horizontal', command=self.log_text.xview)
@@ -227,13 +223,11 @@ class LogSearchPanel(tk.Frame):
         self.log_text.delete("1.0", tk.END)
         self.log_text.insert(tk.END, "Starting background retrieval...\n")
         
-        # Start Worker
         self.worker = LogRetrievalWorker(self.controller, self.base_url, date, time)
         self.worker.start()
         self.after(200, self._poll_worker)
 
     def _poll_worker(self):
-        # 1. Process Status Logs
         try:
             while True:
                 msg = self.worker.log_queue.get_nowait()
@@ -241,21 +235,18 @@ class LogSearchPanel(tk.Frame):
                 self.log_text.see(tk.END)
         except queue.Empty: pass
 
-        # 2. Check for Final Data
         try:
             results = self.worker.data_queue.get_nowait()
             self._display_results(results)
-            return # Stop polling
+            return
         except queue.Empty: pass
         
-        # Continue polling
         self.after(200, self._poll_worker)
 
     def _display_results(self, results):
         self.log_text.insert(tk.END, "\n--- RETRIEVAL COMPLETE ---\n")
         self.toc_tree.delete(*self.toc_tree.get_children())
         
-        # Group by Type for TOC
         grouped = {}
         for name, data in results.items():
             t = data['type']
@@ -267,7 +258,6 @@ class LogSearchPanel(tk.Frame):
             for n in names:
                 self.toc_tree.insert(parent, "end", text=n)
                 
-        # Fill Text Widget
         for name, data in results.items():
             self.log_text.insert(tk.END, f"\n=== {name} ===\n{data['content']}\n")
 
@@ -275,7 +265,6 @@ class LogSearchPanel(tk.Frame):
         sel = self.toc_tree.selection()
         if sel:
             text = self.toc_tree.item(sel[0], "text")
-            # Search logic
             pos = self.log_text.search(f"=== {text} ===", "1.0", tk.END)
             if pos: self.log_text.see(pos)
 
