@@ -21,9 +21,22 @@ class BusinessController:
 
     def connect(self, hostname, username, password):
         try:
-            self.mvcm.connect(hostname, username, password)
+            return self.mvcm.connect(hostname, username, password)
         except Exception:
             pass
+
+    def loop_logon(self, username, password, servers):
+        for server in servers:
+            try:
+                resp = self.mvcm.connect(server[1], username, password)
+                if resp.status_code == 200:
+                    return 200
+                elif resp.status_code == 403:
+                    return 403
+            except Exception:
+                pass
+        return 500
+
         
     def get_saved_configurations(self):
         r = self.mvcm.get("/saved-configurations", "application/json")
@@ -284,9 +297,6 @@ class ExcelParser:
         for json_obj in json_list:
             # Extract the 'name' value and remove it from the JSON object
             name = json_obj.pop('name', None)
-            serverName = json_obj.pop('Chip', None)
-            serverName = json_obj.pop('Port', None)
-            serverName = json_obj.pop('Location', None)
             
             if name is not None:
                 # Construct the URL with the 'name' value
@@ -312,7 +322,7 @@ class ExcelParser:
         """
         for json_obj in json_list:
             # Extract the 'name' value and remove it from the JSON object
-            serverName = json_obj.pop('Chip', None)
+            serverName = json_obj.pop('Server', None)
             sessionName = json_obj.pop('name', None)
             DR = json_obj.pop('DR?', None)
             LPAR = json_obj.pop('LPAR', None)
