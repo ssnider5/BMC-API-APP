@@ -18,8 +18,8 @@ def create_comparison_excel(file_a, file_b, output_path):
         return
 
     try:
-        # Use xlsxwriter for stability
-        with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
+        # Using 'openpyxl' since you already have it installed
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             
             # Iterate through EVERY sheet in Client A
             for sheet_name, df_a in xls_a.items():
