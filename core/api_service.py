@@ -1,7 +1,7 @@
 # core/api_service.py
 import os
 import tempfile
-import mvcm  # Assuming this is your custom library
+import core.mvcm as mvcm # Assuming this is your custom library
 from core.utils import printResponseError
 
 class ApiService:

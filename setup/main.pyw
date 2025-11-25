@@ -1,6 +1,6 @@
 if __name__ == "__main__":
     try:
-        import gui
+        import ui.main_app
         gui.main()  
     except Exception as e:
         # Optionally log any errors since we won't have a console
