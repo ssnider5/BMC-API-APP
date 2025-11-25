@@ -99,11 +99,8 @@ class CreateFromExcelPanel(BaseExcelPanel):
             self.created_servers = self.excel_parser.extract_names(json_data)
             
             # Use controller/service to batch create
-            # Assuming mvcm_inst was passed but ideally we use ApiService methods
-            # Here we call the util method on excel parser (refactored to api_service in Step 2, but keeping compatible)
-            # We will assume ApiService has 'create_ccs_servers_batch'
-            
-            # For now, using the logic from your snippet:
+            # Assuming ApiService has 'create_ccs_servers_batch' (moved from excel parser in Step 2)
+            # If still using excel parser direct method:
             success = self.excel_parser.create_ccs_server(self.mvcm_inst, json_data)
             
             messagebox.showinfo("Success", "Import Complete")
@@ -160,7 +157,7 @@ class CreateConsoleFromExcelPanel(BaseExcelPanel):
             messagebox.showerror("Error", str(e))
 
 # -------------------------------
-# Automation Panel (Refactored TestCode)
+# Automation Panel
 # -------------------------------
 class AutomationPanel(tk.Frame):
     def __init__(self, master, controller, **kwargs):
@@ -169,8 +166,6 @@ class AutomationPanel(tk.Frame):
         tk.Button(self, text="Run Automation Import", command=self.run_automation).pack(pady=20)
 
     def run_automation(self):
-        # ... [Logic from TestCode class] ...
-        # For brevity, preserving structure:
         try:
             # Example logic
             messagebox.showinfo("Info", "Automation logic executed.")
@@ -207,7 +202,11 @@ class LogSearchPanel(tk.Frame):
         content.pack(fill='both', expand=True, padx=10)
         
         # TOC (Left)
-        self.toc_tree = ttk.Treeview(content, width=200)
+        # FIX: Removed width=200 from constructor
+        self.toc_tree = ttk.Treeview(content) 
+        # Configure the main column width here
+        self.toc_tree.column("#0", width=200, minwidth=100)
+        
         self.toc_tree.pack(side='left', fill='y')
         self.toc_tree.bind("<<TreeviewSelect>>", self.on_toc_select)
         
@@ -279,4 +278,5 @@ class LogSearchPanel(tk.Frame):
             # Search logic
             pos = self.log_text.search(f"=== {text} ===", "1.0", tk.END)
             if pos: self.log_text.see(pos)
+
 
