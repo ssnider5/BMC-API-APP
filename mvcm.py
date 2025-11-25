@@ -56,9 +56,11 @@ class Mvcm:
                     self.cookies['XSRF-TOKEN'] = self.xsrf_token
 
         # Perform logon
-        self.logon()
+        resp = self.logon()
 
         atexit.register(self.exiting)
+
+        return resp
 
 
     def logon(self):
@@ -79,9 +81,8 @@ class Mvcm:
         else:
             print('Logon error: ' + str(r.status_code))
             self.trace(str(r.content))
-            sys.exit(1)
 
-        return self.apiSession
+        return r
 
     #
     # Performs an HTTP GET
@@ -138,6 +139,38 @@ class Mvcm:
         self.trace('content: ' + str(r.content))
         self.trace('=======================================================================')
         return r
+    
+    def getlog(self, server_name):
+
+        headers = {}
+        if self.apiSession != None:
+            headers['x-api-session'] = self.apiSession 
+        
+
+        self.traceheaders(headers)
+
+        #self.trace('cookie is ' + str(self.cookies))
+        fullurl = f'https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/logs/download/1/{server_name}/{server_name}.log'
+        #self.trace(f'URL: {fullurl}')
+        r = requests.get(url=fullurl ,headers = headers, verify=False, cookies=self.cookies)
+        self.cookies.update(r.cookies)
+        return r
+    
+    def getalllogs(self, url):
+
+        headers = {}
+        if self.apiSession != None:
+            headers['x-api-session'] = self.apiSession 
+        
+
+        self.traceheaders(headers)
+
+        #self.trace('cookie is ' + str(self.cookies))
+        fullurl = url
+        #self.trace(f'URL: {fullurl}')
+        r = requests.get(url=fullurl ,headers = headers, verify=False, cookies=self.cookies)
+        self.cookies.update(r.cookies)
+        return r
     #
     # Performs an HTTP PUT which updates the entity
     #
@@ -164,11 +197,28 @@ class Mvcm:
         if not r.ok:
             print(f'HTTP: {r.status_code} from {self.mkurl(path)}')
         return r
+    
+    def puturl(self, path, data):
+        headers = {}
+        if self.apiSession != None:
+            headers['x-api-session'] = self.apiSession 
+
+        if 'XSRF-TOKEN' in self.cookies:
+            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
+        
+
+        r = requests.put(url=path ,headers = headers, verify=False, json=data, cookies=self.cookies)
+        self.trace(f'{r.status_code} {HTTPStatus(r.status_code).phrase}')
+        self.traceheaders(r.headers)
+        self.trace('')
+        if not r.ok:
+            print(f'HTTP: {r.status_code} from {self.mkurl(path)}')
+        return r
 
     #
     # Performs an HTTP POST, which creates an entity
     #
-    def post(self, path, content):
+    def post(self, path, content=None):
         headers = {}
         if self.apiSession is not None:  # Changed to match postbinary's check
             headers['x-api-session'] = self.apiSession
@@ -268,6 +318,51 @@ class Mvcm:
             print(f"Exception during POST request: {str(e)}")
             raise
 
+    #
+    # Performs an HTTP POST, which creates an entity
+    #
+    def posttest(self, path, content=None):
+        headers = {}
+        if self.apiSession is not None:  # Changed to match postbinary's check
+            headers['x-api-session'] = self.apiSession
+
+        if 'XSRF-TOKEN' in self.cookies:  # Changed to match postbinary's check
+            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
+        
+        
+        try:  # Added try-except block like postbinary
+            r = requests.post(
+                url=path,
+                headers=headers,
+                json=content,
+                cookies=self.cookies,
+                verify=False
+            )
+
+            print(f'    HTTP: {r.status_code} from {path}')
+            print(f'    Request headers sent: {headers}')
+            print(f'    Response headers: {dict(r.headers)}')
+            print(f'    Response content: {r.text}')
+
+            # Update cookies directly from response cookies like postbinary
+            self.cookies.update(r.cookies)
+            
+            self.trace('Response:')
+            self.trace(f'   {r.status_code} {HTTPStatus(r.status_code).phrase}')
+            self.traceheaders(r.headers)
+            self.trace('')
+            
+            if not r.ok:
+                print(f'    HTTP: {r.status_code} from {self.mkurl(path)}')
+                print(f'    Request headers sent: {headers}')
+                print(f'    Response headers: {dict(r.headers)}')
+                print(f'    Response content: {r.text}')
+                
+            return r
+
+        except Exception as e:
+            print(f"Exception during POST request: {str(e)}")
+            raise
     
     #
     # Performs an HTTP DELETE, which removes the entity
