@@ -1,0 +1,126 @@
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button13"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button13"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button13"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 53, in <lambda>
+    btn = tk.Button(banner, text=m, command=lambda x=m: self.switch_mode(x), relief='flat')
+                                                        ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 133, in switch_mode
+    if options: self.load_panel(options[0])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button18"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button18"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button18"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button18"
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 127, in <lambda>
+    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
+                                                                  ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 138, in load_panel
+    btn.config(bg="#FF8C00" if n == name else "#444444")
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1722, in configure
+    return self._configure('configure', cnf, kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1712, in _configure
+    self.tk.call(_flatten((self._w, cmd)) + self._options(cnf))
+_tkinter.TclError: invalid command name ".!actionpanel.!frame3.!frame.!button18"
