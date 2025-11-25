@@ -50,6 +50,7 @@ class ActionPanel(tk.Frame):
         
         modes = ["Saved Configurations", "CCS Server", "Automation Server"]
         for m in modes:
+            # Use a lambda that captures the loop variable 'm' correctly
             btn = tk.Button(banner, text=m, command=lambda x=m: self.switch_mode(x), relief='flat')
             btn.pack(side=tk.LEFT, padx=5)
             self.action_buttons[m] = btn
@@ -97,6 +98,7 @@ class ActionPanel(tk.Frame):
     def change_server(self, server):
         self.selected_server = server
         self.server_lbl.config(text=f"Current: {server[0]}")
+        # Re-connect
         self.controller.connect(server[1], self.username, self.password)
         # Refresh current view if possible
         for w in self.panel_area.winfo_children():
@@ -110,7 +112,11 @@ class ActionPanel(tk.Frame):
             btn.config(bg="orange" if m == mode else "SystemButtonFace")
             
         # Update Sidebar
+        # 1. Destroy old widgets
         for w in self.sidebar.winfo_children(): w.destroy()
+        
+        # 2. CLEAR THE DICTIONARY (This was the missing fix)
+        self.side_panel_buttons = {}
         
         options = []
         if mode == "Saved Configurations":
@@ -124,18 +130,28 @@ class ActionPanel(tk.Frame):
             self.title_lbl.config(text="Automation")
             
         for opt in options:
+            # Create new buttons
             btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
                            bg="#444444", fg="white", relief="flat", anchor="w", padx=10)
             btn.pack(fill=tk.X, pady=1)
+            # Store reference
             self.side_panel_buttons[opt] = btn
             
-        # Load default
-        if options: self.load_panel(options[0])
+        # Load default panel for this mode
+        if options: 
+            self.load_panel(options[0])
+        else:
+            # Clear panel area if no options
+            for w in self.panel_area.winfo_children(): w.destroy()
 
     def load_panel(self, name):
         # Sidebar Highlight
+        # This checks self.side_panel_buttons, which we just safely reset in switch_mode
         for n, btn in self.side_panel_buttons.items():
-            btn.config(bg="#FF8C00" if n == name else "#444444")
+            try:
+                btn.config(bg="#FF8C00" if n == name else "#444444")
+            except tk.TclError:
+                pass # Safety catch if a button is somehow destroyed unexpectedly
             
         for w in self.panel_area.winfo_children(): w.destroy()
         
@@ -158,4 +174,5 @@ class ActionPanel(tk.Frame):
             LogSearchPanel(p, c).pack(fill=tk.BOTH, expand=True)
         elif name == "Automation Import":
             AutomationPanel(p, c).pack(fill=tk.BOTH, expand=True)
+
 
