@@ -1,22 +1,81 @@
-Traceback (most recent call last):
-  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1968, in __call__
-    return self.func(*args)
-           ^^^^^^^^^^^^^^^^
-  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 134, in <lambda>
-    btn = tk.Button(self.sidebar, text=opt, command=lambda x=opt: self.load_panel(x),
-                                                                  ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\dashboard.py", line 174, in load_panel
-    LogSearchPanel(p, c).pack(fill=tk.BOTH, expand=True)
-    ^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\complex_panels.py", line 188, in __init__
-    self.create_widgets()
-  File "C:\Users\F7JB1KS\OneDrive - Fiserv Corp\Git_Projects\Github\BMC-API-APP\ui\complex_panels.py", line 210, in create_widgets
-    self.toc_tree = ttk.Treeview(content, width=200)
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\tkinter\ttk.py", line 1180, in __init__
-    Widget.__init__(self, master, "ttk::treeview", kw)
-  File "C:\Program Files\Python312\Lib\tkinter\ttk.py", line 527, in __init__
-    tkinter.Widget.__init__(self, master, widgetname, kw=kw)
-  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 2661, in __init__
-    self.tk.call(
-_tkinter.TclError: unknown option "-width"
+import pandas as pd
+import os
+
+def create_comparison_excel(file_a_path, file_b_path, output_path):
+    # Check if files exist
+    if not os.path.exists(file_a_path) or \
+       not os.path.exists(file_b_path):
+        print("Error: One or both input files could not be found.")
+        return
+
+    print("Reading Excel files... this might take a moment.")
+
+    # sheet_name=None reads all sheets into a dictionary
+    # where key = sheet name, value = dataframe
+    try:
+        xls_a = pd.read_excel(file_a_path, sheet_name=None)
+        xls_b = pd.read_excel(file_b_path, sheet_name=None)
+    except Exception as e:
+        print(f"Error reading files: {e}")
+        return
+
+    # Create a writer object to save the new Excel file
+    # We use 'w' mode (write)
+    try:
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+            sheets_processed = 0
+
+            # Iterate through all sheets in the first file (Client A)
+            for sheet_name, df_a in xls_a.items():
+
+                # Check if this page exists in Client B
+                if sheet_name in xls_b:
+                    df_b = xls_b[sheet_name]
+
+                    # OPTIONAL: Add a column so you know which row
+                    # came from which client.
+                    df_a = df_a.copy()
+                    df_b = df_b.copy()
+                    df_a['Source_File'] = 'Client A'
+                    df_b['Source_File'] = 'Client B'
+
+                    # Combine the data (Append B to the bottom of A)
+                    combined_df = pd.concat(
+                        [df_a, df_b],
+                        ignore_index=True
+                    )
+
+                    # Write the combined data to the new file
+                    combined_df.to_excel(
+                        writer,
+                        sheet_name=sheet_name,
+                        index=False
+                    )
+
+                    print(f"Processed match: Sheet '{sheet_name}'")
+                    sheets_processed += 1
+
+                else:
+                    # Logic: If Client B doesn't have the page,
+                    # we ignore it (do not add to comparison file).
+                    print(f"Ignored: Sheet '{sheet_name}' "
+                          f"(not found in Client B)")
+
+            if sheets_processed == 0:
+                print("Warning: No matching sheets found between files.")
+            else:
+                print("-" * 40)
+                print(f"Success! '{output_path}' created with "
+                      f"{sheets_processed} sheets.")
+
+    except Exception as e:
+        print(f"An error occurred while writing the file: {e}")
+
+# --- CONFIGURATION ---
+# Replace these names with your actual file paths
+client_a_file = 'client_a.xlsx'
+client_b_file = 'client_b.xlsx'
+output_file = 'comparison.xlsx'
+
+if __name__ == "__main__":
+    create_comparison_excel(client_a_file, client_b_file, output_file)
