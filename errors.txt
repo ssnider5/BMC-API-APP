@@ -1,45 +1,83 @@
+
+program api info:
+
+    HTTP: 400 from https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/network-diagnostics/operations/connect
+    Request headers sent: {'x-api-session': 'eyJ4NXQjUzI1NiI6IlhiWV9yQklnZEF2bE0xWlNRbmprc2xYbE9XY1pfTy15VGxLZ3VjRXphNHciLCJraWQiOiJtdmNtIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJGN0pCMUtTIiwidW5pcXVlLWtleSI6IkpzN0VUazB4VFFicVhZNS9oQ1FBTVFNN3lxR3BZS1dvcWYwN1RsVWZSNkpIaHNkdzlVRHlIZURGWUFrV0pCQkU5WlBHTUdmOVVWZnA2L25TZm9iRDhsdTdtY1RDK2thU05lUHFkOHNXa1hHY2pvaHRxckJOTW1IVWwra2xTQjVMSUVCYnRqTkJzWEtNNlVOUEt0Sm5HYzdpcTc4SUdvb3JsZnNtWk5OdFVrND0iLCJ0aWNrZXQiOiJWc1hXaEVRZkwxdEFzRUo1MktXcWdORVpYZ2M4ZERqT3ptUVFOMk5ncHdJRUVrN0ZuTDlWM3lrY281eFFvMnRScDgyaG40SGhtamFNVU9xWGZ0OTBDUnBFIiwic2NvcGUiOiIxIDMgNCA1IiwiaXNzIjoic2VsZiIsImdyb3VwcyI6IjEyIiwiZXhwIjoxNzY1MzEyODcwLCJpYXQiOjE3NjUzMDU2NzAsInVzZXJuYW1lIjoiRjdKQjFLUyJ9.P4MY53tm9GO6LUF3B8iagrs-iZMszOPHH_dj0Maq7_vFr6rw9ZZbj04EMa391yslruWHH7k3bLtSU_UTdlaNQyShHmJt5Wde8aT7B6YHWy7KslfkHwjE3EtBYBiNpodv2Nz1UuljuvGVUNc5mhoeK34fJ-ev0XlhUnTQ5U_M0NM_3vXAGE3mdGKAmJLcjjYcxCdafHtJNabFbxruFCb_AQQo0i7RPyoeAz17_TbX10uDouiWhTfXZ0XK4x2O0yimnIZMxW7vo1i0Kq7bWVtqCYEqjTvsRbjZjls1LM9MgG6ckaxAPqOxqLBgiUuX0o8b9-spPvi_Fij-aW_3bGTcRA', 'X-XSRF-TOKEN': '3430da70-c4af-44d7-829e-a6c5a93a3cb5'}
+    Response headers: {'Strict-Transport-Security': 'max-age=31536000;includeSubDomains', 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff', 'X-XSS-Protection': '0', 'Cache-Control': 'no-cache, no-store, max-age=0, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0', 'X-Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self';", 'Content-Type': 'application/problem+json', 'Transfer-Encoding': 'chunked', 'Date': 'Tue, 09 Dec 2025 18:43:32 GMT', 'Connection': 'close'}
+    Response content: {"type":"about:blank","title":"Bad Request","status":400,"detail":"Failed to read request","instance":"/mvcm-api/network-diagnostics/operations/connect"}
+
+!!! API ERROR 400 !!!
+Sent: [{'hostname': '123.456.789', 'luName': 'TESTBMC', 'model': '3278-2', 'port': 9004, 'useSsl': False}]
+Server Message: {"type":"about:blank","title":"Bad Request","status":400,"detail":"Failed to read request","instance":"/mvcm-api/network-diagnostics/operations/connect"}
+Diagnostics failed for TESTBMC: HTTP 400: {"type":"about:blank","title":"Bad Request","status":400,"detail":"Failed to read request","instance":"/mvcm-api/network-diagnostics/operations/connect"}       
+
+
+website api info:
+{"requests":[{"hostname":"123.456.789","luName":"TESTBMC","model":"3278-2","port":9004,"useSsl":false}]}
+
 {
-  "hostname": "123.456.789",
-  "luName": "TESTBMC",
-  "model": "3278-2",
-  "port": 9004,
-  "useSsl": false
+  "status": [
+    {
+      "connected": false,
+      "hostname": "123.456.789",
+      "port": 9004,
+      "messages": [
+        "Connection failed. Unknown host: 123.456.789"
+      ]
+    }
+  ]
 }
+
+JSESSIONID	361C576ECAA2F2F5051FB4D1F7E54E79	qdlp2bcmapp0002.ess.fiserv.one	/	Session	42	✓	✓	Strict			Medium
+x-api-session	eyJ4NXQjUzI1NiI6IlhiWV9yQklnZEF2bE0xWlNRbmprc2xYbE9XY1pfTy15VGxLZ3VjRXphNHciLCJraWQiOiJtdmNtIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJGN0pCMUtTIiwidW5pcXVlLWtleSI6IjNsUjNBUFRzb21GRFFmVGtWbk8xSThmLytHNEJEYTRIUDI5RDJ3L0daNnRGNXVEMmtoTmg5eXVUNU5HTlB0RkNCV2tEQ013YU0xQkRLRWFxaytPbGxIMWhTLzJNVHYzZXJRTm95S25ORlZMMVZQSW1NYStCcHhNOGQzblNxYithQ0F6MXF4aFpYaVNPejJVNjYxNmh5M2RoUC9tSk1KUWpZMWRPaXJadStHbz0iLCJ0aWNrZXQiOiJWc1hXaEVRZkwxdEFzRUo1MktXcWdORVpYZ2M4ZERqT3ptUVFOMk5ncHdJRUVrN0ZuYkJYM0N3YW81eFFvMnRScDgyU2hObTlkWjNQQ1N5d21vTEV6bUFsIiwic2NvcGUiOiIxIDMgNCA1IiwiaXNzIjoic2VsZiIsImdyb3VwcyI6IjEyIiwiZXhwIjoxNzY1MzEyOTgyLCJpYXQiOjE3NjUzMDU3ODIsInVzZXJuYW1lIjoiRjdKQjFLUyJ9.Ps9v1Se7l9eFY9UPmPWIMwgorQ0P1DrJx55dSLa6xjdPpkSPbk_Twl3w6ARwzKXgwuI_PY4m2dq3GutdYCq4iqlAmTpI_Q1APwDJegSmAkWfIMrsFm2geJup9U6Y58gL2WWPGRZeWAQd49uAbELmd3p5L0RVlg0-BbNx3Ya6ivurEiUrM1GFfhFCyqm2Wcspu9OCv-HIXXm873lMxpF0A5wyYyPWn7wWHXDEnLO0XwlYrOk1Eaa7-wDG4o6afcFx-D5Mu0k4XtQsNDxu42CZBPLX04KWenD9v8buxAHDNqvqPOBAy-43rm4x5GhxjD07px5Umlw4xLlpWax59WIS9A	qdlp2bcmapp0002.ess.fiserv.one	/	2025-12-09T18:57:59.313Z	1011	✓	✓	Strict			Medium
+XSRF-TOKEN	226ffea2-5e3d-4991-b8f8-c0dc27af1a4e	qdlp2bcmapp0002.ess.fiserv.one	/	2025-12-09T18:54:14.302Z	46		✓	Strict			Medium
 
 Request URL
 https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/network-diagnostics/operations/connect
 Request Method
 POST
-
-{
-    "status": [
-        {
-            "connected": false,
-            "hostname": "123.456.789",
-            "port": 9004,
-            "messages": [
-                "Connection failed. Unknown host: 123.456.789"
-            ]
-        }
-    ]
-}
-
-[
-  {
-    "hostname": "123.456.789",
-    "luName": "TESTBMC",
-    "model": "3278-2",
-    "port": 9004,
-    "useSsl": false
-  }
-]
-
-[
-  {
-    "hostname": "123.456.789",
-    "luName": "TESTBMC",
-    "model": "3278-2",
-    "port": 9004,
-    "useSsl": false
-  }
-]
+Status Code
+200 OK
+Remote Address
+100.64.1.107:443
+Referrer Policy
+strict-origin-when-cross-origin
+HTTP/1.1 200
+Strict-Transport-Security: max-age=31536000;includeSubDomains
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self';
+vary: accept-encoding
+Content-Encoding: gzip
+Content-Type: application/json
+Date: Tue, 09 Dec 2025 18:44:56 GMT
+Keep-Alive: timeout=60
+Connection: keep-alive
+Transfer-Encoding: chunked
+POST /mvcm-api/network-diagnostics/operations/connect HTTP/1.1
+Accept: application/json, text/plain, */*
+Accept-Encoding: gzip, deflate, br, zstd
+Accept-Language: en-US,en;q=0.9
+Authorization: Bearer eyJ4NXQjUzI1NiI6IlhiWV9yQklnZEF2bE0xWlNRbmprc2xYbE9XY1pfTy15VGxLZ3VjRXphNHciLCJraWQiOiJtdmNtIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJGN0pCMUtTIiwidW5pcXVlLWtleSI6IjNsUjNBUFRzb21GRFFmVGtWbk8xSThmLytHNEJEYTRIUDI5RDJ3L0daNnRGNXVEMmtoTmg5eXVUNU5HTlB0RkNCV2tEQ013YU0xQkRLRWFxaytPbGxIMWhTLzJNVHYzZXJRTm95S25ORlZMMVZQSW1NYStCcHhNOGQzblNxYithQ0F6MXF4aFpYaVNPejJVNjYxNmh5M2RoUC9tSk1KUWpZMWRPaXJadStHbz0iLCJ0aWNrZXQiOiJWc1hXaEVRZkwxdEFzRUo1MktXcWdORVpYZ2M4ZERqT3ptUVFOMk5ncHdJRUVrN0ZuYkJYM0N3YW81eFFvMnRScDgyU2hObTlkWjNQQ1N5d21vTEV6bUFsIiwic2NvcGUiOiIxIDMgNCA1IiwiaXNzIjoic2VsZiIsImdyb3VwcyI6IjEyIiwiZXhwIjoxNzY1MzEyOTgyLCJpYXQiOjE3NjUzMDU3ODIsInVzZXJuYW1lIjoiRjdKQjFLUyJ9.Ps9v1Se7l9eFY9UPmPWIMwgorQ0P1DrJx55dSLa6xjdPpkSPbk_Twl3w6ARwzKXgwuI_PY4m2dq3GutdYCq4iqlAmTpI_Q1APwDJegSmAkWfIMrsFm2geJup9U6Y58gL2WWPGRZeWAQd49uAbELmd3p5L0RVlg0-BbNx3Ya6ivurEiUrM1GFfhFCyqm2Wcspu9OCv-HIXXm873lMxpF0A5wyYyPWn7wWHXDEnLO0XwlYrOk1Eaa7-wDG4o6afcFx-D5Mu0k4XtQsNDxu42CZBPLX04KWenD9v8buxAHDNqvqPOBAy-43rm4x5GhxjD07px5Umlw4xLlpWax59WIS9A
+Cache-Control: no-cache
+Connection: keep-alive
+Content-Length: 104
+Content-Security-Policy: default-src 'none'; img-src 'self'; form-action 'self';style-src 'self'
+Content-Type: application/json
+Cookie: XSRF-TOKEN=226ffea2-5e3d-4991-b8f8-c0dc27af1a4e; x-api-session=eyJ4NXQjUzI1NiI6IlhiWV9yQklnZEF2bE0xWlNRbmprc2xYbE9XY1pfTy15VGxLZ3VjRXphNHciLCJraWQiOiJtdmNtIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJGN0pCMUtTIiwidW5pcXVlLWtleSI6IjNsUjNBUFRzb21GRFFmVGtWbk8xSThmLytHNEJEYTRIUDI5RDJ3L0daNnRGNXVEMmtoTmg5eXVUNU5HTlB0RkNCV2tEQ013YU0xQkRLRWFxaytPbGxIMWhTLzJNVHYzZXJRTm95S25ORlZMMVZQSW1NYStCcHhNOGQzblNxYithQ0F6MXF4aFpYaVNPejJVNjYxNmh5M2RoUC9tSk1KUWpZMWRPaXJadStHbz0iLCJ0aWNrZXQiOiJWc1hXaEVRZkwxdEFzRUo1MktXcWdORVpYZ2M4ZERqT3ptUVFOMk5ncHdJRUVrN0ZuYkJYM0N3YW81eFFvMnRScDgyU2hObTlkWjNQQ1N5d21vTEV6bUFsIiwic2NvcGUiOiIxIDMgNCA1IiwiaXNzIjoic2VsZiIsImdyb3VwcyI6IjEyIiwiZXhwIjoxNzY1MzEyOTgyLCJpYXQiOjE3NjUzMDU3ODIsInVzZXJuYW1lIjoiRjdKQjFLUyJ9.Ps9v1Se7l9eFY9UPmPWIMwgorQ0P1DrJx55dSLa6xjdPpkSPbk_Twl3w6ARwzKXgwuI_PY4m2dq3GutdYCq4iqlAmTpI_Q1APwDJegSmAkWfIMrsFm2geJup9U6Y58gL2WWPGRZeWAQd49uAbELmd3p5L0RVlg0-BbNx3Ya6ivurEiUrM1GFfhFCyqm2Wcspu9OCv-HIXXm873lMxpF0A5wyYyPWn7wWHXDEnLO0XwlYrOk1Eaa7-wDG4o6afcFx-D5Mu0k4XtQsNDxu42CZBPLX04KWenD9v8buxAHDNqvqPOBAy-43rm4x5GhxjD07px5Umlw4xLlpWax59WIS9A; JSESSIONID=361C576ECAA2F2F5051FB4D1F7E54E79
+Host: qdlp2bcmapp0002.ess.fiserv.one
+Origin: https://qdlp2bcmapp0002.ess.fiserv.one
+Pragma: no-cache
+Referer: https://qdlp2bcmapp0002.ess.fiserv.one/configurations
+Sec-Fetch-Dest: empty
+Sec-Fetch-Mode: cors
+Sec-Fetch-Site: same-origin
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0
+X-XSRF-TOKEN: 226ffea2-5e3d-4991-b8f8-c0dc27af1a4e
+sec-ch-ua: "Microsoft Edge";v="143", "Chromium";v="143", "Not A(Brand";v="24"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "Windows"
