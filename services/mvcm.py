@@ -9,7 +9,6 @@ from datetime import datetime
 import shutil
 import os
 import zipfile
-from datetime import datetime
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
 
@@ -19,7 +18,6 @@ import xml.dom.minidom
 #
 class Mvcm:
     _traceon = False
-
 
     #
     # Connect to the server (host) with the username and password
@@ -230,6 +228,60 @@ class Mvcm:
             print(f"Exception during POST request: {str(e)}")
             raise
 
+    #
+    # NEW: Performs a POST specifically for network diagnostics
+    # This manually injects headers (Origin, Referer, Content-Type) required 
+    # to bypass strict security filters that normally reject list payloads.
+    #
+    def post_diagnostic(self, content_list):
+        path = "/network-diagnostics/operations/connect"
+        
+        # Calculate origin from the connected host
+        # Assuming https since self.encrypted is usually True in connect()
+        protocol = "https" if self.encrypted else "http"
+        base_origin = f"{protocol}://{self.host}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Origin": base_origin,
+            "Referer": f"{base_origin}/configurations",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Python/BMC-Tool"
+        }
+
+        # Add Authentication Headers
+        if self.apiSession is not None:
+            headers['x-api-session'] = self.apiSession
+            headers['Authorization'] = f"Bearer {self.apiSession}"
+
+        if 'XSRF-TOKEN' in self.cookies:
+            headers['X-XSRF-TOKEN'] = self.cookies['XSRF-TOKEN']
+        
+        self.trace(f'POST DIAGNOSTIC /mvcm-api{path}')
+        self.traceheaders(headers)
+        self.trace(json.dumps(content_list, indent=2))
+        
+        try:
+            r = requests.post(
+                url=self.mkurl(path),
+                headers=headers,
+                json=content_list, # Expected to be a List [{}]
+                cookies=self.cookies,
+                verify=False
+            )
+
+            self.cookies.update(r.cookies)
+            self.trace(f'{r.status_code} {HTTPStatus(r.status_code).phrase}')
+            
+            if not r.ok:
+                print(f'DIAGNOSTIC HTTP: {r.status_code}')
+                print(f'Response: {r.text}')
+                
+            return r
+
+        except Exception as e:
+            print(f"Exception during POST DIAGNOSTIC: {str(e)}")
+            raise
 
     def postbinary(self, path, file_path):
         headers = {}
@@ -499,11 +551,3 @@ class Mvcm:
     #
     def removeCookie(self, cookieName):
         self.cookies.pop(cookieName)
-
-
-
-'''if __name__ == "__main__":
-    connector = Mvcm()
-    connectInfo = ConnectInfo()
-
-    connector.connect(connectInfo.host, connectInfo.user, connectInfo.password) '''
