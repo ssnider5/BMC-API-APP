@@ -21,7 +21,7 @@ class ExcelBasePanel(tk.Frame):
         # Table Area
         self.table_frame = ttk.Frame(self)
         self.table_frame.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(self.table_frame, show='headings') # Columns set dynamically later
+        self.tree = ttk.Treeview(self.table_frame, show='headings')
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Scrollbars
@@ -44,10 +44,8 @@ class ExcelBasePanel(tk.Frame):
             self.load_preview(path)
 
     def load_preview(self, path):
-        # Use Service to read data
         headers, rows = self.excel_service.read_excel(path, sheet_name=self.sheet_index)
         
-        # Reset Tree
         self.tree['columns'] = headers
         for h in headers:
             self.tree.heading(h, text=h)
@@ -59,11 +57,25 @@ class ExcelBasePanel(tk.Frame):
             
         self.import_btn.config(state='normal')
 
+    def color_row(self, identifier, tag, col_idx=0):
+        """
+        Colors a row based on a value in a specific column.
+        """
+        for item in self.tree.get_children():
+            vals = self.tree.item(item)['values']
+            # Convert both to string to ensure safe comparison
+            if vals and str(vals[col_idx]) == str(identifier):
+                # FIX: Remove old tags first so the new color takes effect
+                self.tree.item(item, tags=()) 
+                self.tree.item(item, tags=(tag,))
+                # Force update to ensure color renders immediately
+                self.update_idletasks()
+
     def run_import(self):
-        pass # Override in child
+        pass 
 
 # -----------------------------------------------------------------------------
-# Create CCS Server Panel
+# Create CCS Server Panel (Verification Removed)
 # -----------------------------------------------------------------------------
 class CreateFromExcelPanel(ExcelBasePanel):
     def __init__(self, master, server_controller, excel_service, **kwargs):
@@ -72,59 +84,16 @@ class CreateFromExcelPanel(ExcelBasePanel):
         super().__init__(master, excel_service, **kwargs)
 
     def run_import(self):
-        # 1. Get JSON from Service
         data = self.excel_service.get_json_data()
-        
-        # 2. Extract names for verification later
-        self.server_names = self.excel_service.extract_names(data)
-        
-        # 3. Create Servers via Controller
         success_count, errors = self.controller.create_ccs_servers_from_json(data)
         
         if not errors:
             messagebox.showinfo("Import Complete", f"Created {success_count} servers.")
-            self.ask_verification()
         else:
             messagebox.showwarning("Import Errors", "\n".join(errors))
 
-    def ask_verification(self):
-        if messagebox.askyesno("Verify", "Do you want to verify servers (Start & Check Logs)?"):
-            self.verify_process()
-
-    def verify_process(self):
-        # Progress Window
-        prog_win = tk.Toplevel(self)
-        prog_win.title("Verifying...")
-        pbar = ttk.Progressbar(prog_win, maximum=len(self.server_names))
-        pbar.pack(padx=20, pady=20)
-        
-        success_count = 0
-        
-        for i, name in enumerate(self.server_names):
-            pbar['value'] = i+1
-            prog_win.update()
-            
-            is_ok, msg = self.controller.verify_server_start(name)
-            
-            if is_ok:
-                success_count += 1
-                self.color_row(name, 'success')
-            else:
-                self.color_row(name, 'failure')
-                print(f"Verification failed for {name}: {msg}")
-
-        prog_win.destroy()
-        messagebox.showinfo("Verification Done", f"Verified {success_count}/{len(self.server_names)}")
-
-    def color_row(self, server_name, tag):
-        # Find row with server name in first column (Column 0)
-        for item in self.tree.get_children():
-            vals = self.tree.item(item)['values']
-            if vals and str(vals[0]) == server_name:
-                self.tree.item(item, tags=(tag,))
-
 # -----------------------------------------------------------------------------
-# Create Console Panel
+# Create Console Panel (Verification Added Here)
 # -----------------------------------------------------------------------------
 class CreateConsoleFromExcelPanel(ExcelBasePanel):
     def __init__(self, master, server_controller, excel_service, **kwargs):
@@ -135,10 +104,64 @@ class CreateConsoleFromExcelPanel(ExcelBasePanel):
     def run_import(self):
         data = self.excel_service.get_json_data()
         
-        # Controller handles the loop and POST
+        # 1. Create Consoles
         success_count, errors = self.controller.create_consoles_from_json(data)
         
-        if not errors:
-            messagebox.showinfo("Success", "Consoles Created")
-        else:
-            messagebox.showwarning("Errors", "\n".join(errors))
+        if errors:
+            messagebox.showwarning("Creation Errors", "\n".join(errors))
+            return # Don't verify if creation failed heavily
+            
+        messagebox.showinfo("Success", f"Created {success_count} consoles.")
+        
+        # 2. Ask to Verify
+        if messagebox.askyesno("Verify", "Do you want to run network diagnostics on these consoles?"):
+            self.verify_consoles(data)
+
+    def verify_consoles(self, json_data):
+        # Progress Window
+        prog_win = tk.Toplevel(self)
+        prog_win.title("Running Diagnostics...")
+        pbar = ttk.Progressbar(prog_win, maximum=len(json_data))
+        pbar.pack(padx=20, pady=20)
+        
+        lbl = ttk.Label(prog_win, text="Initializing...")
+        lbl.pack(pady=5)
+        
+        passed = 0
+        
+        for i, row in enumerate(json_data):
+            # We need to extract the specific fields for verification
+            # row is a dictionary from the excel service
+            
+            # Note: create_consoles_from_json modifies the list in place in the controller
+            # but we passed a copy or we re-read the data. 
+            # To be safe, we use the raw data from excel_service again or rely on the fact
+            # that we need 'Server' (hostname) and 'name' (luName) and 'Port'.
+            
+            host = row.get('hostname') # You said "hostname being the ccs server hostname" - check your excel column name
+            # If your excel column is "Server", use that.
+            if not host: host = row.get('Server') 
+            
+            lu_name = row.get('name')
+            port = row.get('Port')
+            
+            lbl.config(text=f"Checking {lu_name}...")
+            pbar['value'] = i+1
+            prog_win.update()
+
+            if host and lu_name:
+                is_connected, msg = self.controller.verify_console_connectivity(host, lu_name, port)
+                
+                # Update UI Color
+                # We color based on the 'name' column which is index 0 in the tree usually?
+                # Actually, check your excel headers. 
+                # Assuming 'name' (LU Name) is unique enough for this list.
+                if is_connected:
+                    self.color_row(lu_name, 'success', col_idx=1) # Assuming Name is column 1. Adjust if needed.
+                    passed += 1
+                else:
+                    self.color_row(lu_name, 'failure', col_idx=1)
+                    print(f"Diagnostics failed for {lu_name}: {msg}")
+            
+        prog_win.destroy()
+        messagebox.showinfo("Verification Complete", f"Diagnostics Passed: {passed}/{len(json_data)}")
