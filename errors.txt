@@ -23,3 +23,23 @@ POST
         }
     ]
 }
+
+[
+  {
+    "hostname": "123.456.789",
+    "luName": "TESTBMC",
+    "model": "3278-2",
+    "port": 9004,
+    "useSsl": false
+  }
+]
+
+[
+  {
+    "hostname": "123.456.789",
+    "luName": "TESTBMC",
+    "model": "3278-2",
+    "port": 9004,
+    "useSsl": false
+  }
+]

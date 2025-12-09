@@ -137,13 +137,15 @@ class CreateConsoleFromExcelPanel(ExcelBasePanel):
             # but we passed a copy or we re-read the data. 
             # To be safe, we use the raw data from excel_service again or rely on the fact
             # that we need 'Server' (hostname) and 'name' (luName) and 'Port'.
+
+
             
-            host = row.get('hostname') # You said "hostname being the ccs server hostname" - check your excel column name
+            host = '123.456.789' # row.get('hostname')  You said "hostname being the ccs server hostname" - check your excel column name
             # If your excel column is "Server", use that.
             if not host: host = row.get('Server') 
             
-            lu_name = row.get('name')
-            port = row.get('Port')
+            lu_name = row.get('luName')
+            port = row.get('upstreamPort')
             
             lbl.config(text=f"Checking {lu_name}...")
             pbar['value'] = i+1

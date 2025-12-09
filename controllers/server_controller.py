@@ -66,14 +66,17 @@ class ServerController:
         }
         """
         endpoint = "/network-diagnostics/operations/connect"
-        
-        payload = {
-            "hostname": hostname,
-            "luName": lu_name,
-            "model": "3278-2", # Hardcoded per requirements
-            "port": int(port) if port else 23, # Default to 23 if missing
+                
+        payload = {        
+            "hostname": "123.456.789",
+            "luName": "TESTBMC",
+            "model": "3278-2",
+            "port": 9004,
             "useSsl": False
         }
+        
+
+        print(payload)
 
         try:
             response = self.mvcm.post(endpoint, payload)
@@ -85,6 +88,12 @@ class ServerController:
             # Response structure:
             # { "status": [ { "connected": false, "hostname": "...", "messages": [...] } ] }
             data = response.json()
+
+            print(data)
+
+            print(response.text)
+
+            print(response.status_code)
             
             if "status" in data and len(data["status"]) > 0:
                 result = data["status"][0]
