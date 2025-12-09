@@ -33,7 +33,6 @@ class ServerController:
         for json_obj in data_to_process:
             server_name = json_obj.pop('Server', None)
             session_name = json_obj.pop('name', None)
-            # Remove unused fields
             json_obj.pop('DR?', None)
             json_obj.pop('LPAR', None)
             json_obj.pop('CU Address', None)
@@ -55,10 +54,8 @@ class ServerController:
 
     def verify_console_connectivity(self, hostname, lu_name, port):
         """
-        Sanitizes data, wraps it in a list, and calls Mvcm.post_diagnostic
-        to handle the strict header requirements.
+        Sanitizes data, builds the object list, and delegates to Mvcm.post_diagnostic.
         """
-        # 1. Prepare Data
         clean_host = str(hostname).strip() if hostname else ""
         clean_lu = str(lu_name).strip() if lu_name else ""
         try:
@@ -66,7 +63,8 @@ class ServerController:
         except (ValueError, TypeError):
             clean_port = 23
 
-        # 2. Build List Payload (required by API)
+        # Just a clean list of objects here.
+        # Mvcm.post_diagnostic will handle the {"requests": [...]} wrapping.
         payload_list = [{
             "hostname": clean_host,
             "luName": clean_lu,
@@ -76,7 +74,6 @@ class ServerController:
         }]
 
         try:
-            # 3. Call the specialized MVCM method
             response = self.mvcm.post_diagnostic(payload_list)
 
             if not response.ok:
