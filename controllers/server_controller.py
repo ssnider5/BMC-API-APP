@@ -54,39 +54,55 @@ class ServerController:
         return success_count, errors
 
     def verify_console_connectivity(self, hostname, lu_name, port):
-        """
-        Hits the network-diagnostics endpoint to check connectivity.
-        Payload:
-        {
-          "hostname": "123.456.789",
-          "luName": "TESTBMC",
-          "model": "3278-2",
-          "port": 9004,
-          "useSsl": false
-        }
-        """
         endpoint = "/network-diagnostics/operations/connect"
-                
-        payload = {        
-            "hostname": "123.456.789",
-            "luName": "TESTBMC",
+        
+        # 1. Sanitize Data (Crucial for Excel imports)
+        # Strip whitespace from strings which often causes 400 errors
+        clean_host = str(hostname).strip() if hostname else ""
+        clean_lu = str(lu_name).strip() if lu_name else ""
+        
+        # Ensure port is a pure integer
+        try:
+            clean_port = int(float(port)) if port else 23
+        except (ValueError, TypeError):
+            clean_port = 23
+
+        # 2. Build Payload
+        payload_object = {
+            "hostname": clean_host,
+            "luName": clean_lu,
             "model": "3278-2",
-            "port": 9004,
+            "port": clean_port,
             "useSsl": False
         }
-        
 
-        print(payload)
+        # 3. Headers (Match Browser exactly)
+        # Sometimes missing 'Content-Type' causes 400s on lists
+        extra_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
         try:
-            response = self.mvcm.post(endpoint, payload)
+            # 4. WRAP IN LIST [ ... ]
+            # We must use the list because that is what the API expects for batch processing.
+            # We explicitly pass the headers to ensure the server knows it's JSON.
+            # Note: We need to access the underlying requests session or pass headers to mvcm.post
+            # Since mvcm.post doesn't accept extra headers in your current script, 
+            # we will rely on requests automatic handling but clean the data first.
             
+            # If your Mvcm.post method doesn't support merging headers, 
+            # the standard requests.post behavior usually works if data is clean.
+            
+            response = self.mvcm.post(endpoint, [payload_object])
+            
+            # 5. DEBUGGING: Check exactly why the 400 happened
             if not response.ok:
-                return False, f"HTTP Error {response.status_code}"
+                print(f"\n!!! API ERROR {response.status_code} !!!")
+                print(f"Sent: {[payload_object]}")
+                print(f"Server Message: {response.text}") # <--- This tells you WHY it failed
+                return False, f"HTTP {response.status_code}: {response.text}"
 
-            # Parse the response
-            # Response structure:
-            # { "status": [ { "connected": false, "hostname": "...", "messages": [...] } ] }
             data = response.json()
 
             print(data)
@@ -97,15 +113,15 @@ class ServerController:
             
             if "status" in data and len(data["status"]) > 0:
                 result = data["status"][0]
-                is_connected = result.get("connected", False)
-                messages = result.get("messages", [])
-                
-                if is_connected:
+                if result.get("connected"):
                     return True, "Connected"
                 else:
-                    return False, "; ".join(messages)
+                    msgs = result.get("messages", [])
+                    return False, "; ".join(msgs)
             else:
-                return False, "Invalid response format"
+                return False, "Server returned empty status (Check Hostname/LU validity)"
 
         except Exception as e:
             return False, str(e)
+
+
