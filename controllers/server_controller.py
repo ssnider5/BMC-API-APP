@@ -49,10 +49,6 @@ class ServerController:
             server_name = json_obj.pop('Server', None)
             session_name = json_obj.pop('name', None)
             
-            # Clean up other fields not needed in the body (based on your original code)
-            # You originally popped these but didn't use them in the URL, 
-            # assuming they are part of the JSON body or just needed to be removed.
-            # I will remove them to match your original logic.
             json_obj.pop('DR?', None)
             json_obj.pop('LPAR', None)
             json_obj.pop('CU Address', None)

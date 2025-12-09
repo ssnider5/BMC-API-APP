@@ -76,7 +76,7 @@ class CreateFromExcelPanel(ExcelBasePanel):
         data = self.excel_service.get_json_data()
         
         # 2. Extract names for verification later
-        self.server_names = self.excel_service.extract_names(data) # Ensure service has this method
+        self.server_names = self.excel_service.extract_names(data)
         
         # 3. Create Servers via Controller
         success_count, errors = self.controller.create_ccs_servers_from_json(data)
@@ -104,7 +104,6 @@ class CreateFromExcelPanel(ExcelBasePanel):
             pbar['value'] = i+1
             prog_win.update()
             
-            # ASK CONTROLLER (No log parsing here!)
             is_ok, msg = self.controller.verify_server_start(name)
             
             if is_ok:
