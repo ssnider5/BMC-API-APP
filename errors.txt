@@ -1,0 +1,25 @@
+{
+  "hostname": "123.456.789",
+  "luName": "TESTBMC",
+  "model": "3278-2",
+  "port": 9004,
+  "useSsl": false
+}
+
+Request URL
+https://qdlp2bcmapp0002.ess.fiserv.one/mvcm-api/network-diagnostics/operations/connect
+Request Method
+POST
+
+{
+    "status": [
+        {
+            "connected": false,
+            "hostname": "123.456.789",
+            "port": 9004,
+            "messages": [
+                "Connection failed. Unknown host: 123.456.789"
+            ]
+        }
+    ]
+}
